@@ -67,6 +67,7 @@
       background: rgba(0,0,0,0.7); padding: 6px; border-radius: 10px; font-size: 12px; align-items: center; }
     #dev b { color: #ff8a8a; margin-right: 4px; }
     #dev button { background: #444; color: #fff; padding: 3px 7px; border-radius: 6px; }
+    @media (max-width: 1000px) { #ver { display: none; } }
     #pad button.sm { width: clamp(40px, 11vmin, 60px); height: clamp(40px, 11vmin, 60px); font-size: clamp(12px, 3vmin, 16px); font-weight: 700; }
     #pad { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }
     #pad .grp { display: flex; gap: 8px; }
@@ -162,9 +163,9 @@
     // Byte-weighted loader: download every script with progress, then run them in order.
     var files = [
       ['lib/phaser-4.2.1.min.js', 1375976],
-      ['src/config.js?v=0.0.157', 6000], ['src/food.js?v=0.0.157', 14000], ['src/art.js?v=0.0.157', 12000],
-      ['src/walker.js?v=0.0.157', 5000], ['src/support.js?v=0.0.157', 8000], ['src/ui.js?v=0.0.157', 9000],
-      ['src/GameScene.js?v=0.0.157', 50000], ['src/main.js?v=0.0.157', 1500]
+      ['src/config.js?v=0.0.158', 6000], ['src/food.js?v=0.0.158', 14000], ['src/art.js?v=0.0.158', 12000],
+      ['src/walker.js?v=0.0.158', 5000], ['src/support.js?v=0.0.158', 8000], ['src/ui.js?v=0.0.158', 9000],
+      ['src/GameScene.js?v=0.0.158', 50000], ['src/main.js?v=0.0.158', 1500]
     ];
     var bar = document.getElementById('lbar'), pct = document.getElementById('lpct');
     var total = 0, got = files.map(function () { return 0; }), shown = 0, texts = [];

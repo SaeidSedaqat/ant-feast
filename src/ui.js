@@ -132,6 +132,8 @@
       $('boosts').hidden = !v.boosts;
       set($('time'), 'time', fmtTime(v.time));
       this.renderRows(v.rows, v.crumbs);
+      const tb = Math.round($('top').getBoundingClientRect().bottom + 6) + 'px'; // the top bar can wrap to two rows
+      if ($('side').style.top !== tb) $('side').style.top = tb;
       for (const k of ['up', 'chomp', 'rally']) { const b = document.querySelector(`#pad [data-k="${k}"]`); if (b) b.hidden = !v.pad[k]; }
     },
 

@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.157',
+  version: '0.0.158',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 

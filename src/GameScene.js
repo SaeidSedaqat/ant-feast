@@ -619,6 +619,13 @@
       this.updateAnts(dt);
       this.gainT += dt;
       if (this.gainT > 1) { if (this.gain > 0) this.floater(C.world.nestX + 14, -10, '+' + AF.fmt(this.gain), 13); this.gain = 0; this.gainT = 0; }
+      // endgame: the last scattered crumbs (≤1%, a single row) would take ages one trip at a time, so the colony sweeps them up
+      if (!st.won && this.cake.left > 0 && this.cake.left <= this.cake.total * 0.01) {
+        const n = this.cake.left;
+        this.cake.cutTo(0);
+        st.crumbs += n; this.gain += n;
+        AF.ui.toast(`<b>Sweep!</b> The colony grabs the last ${AF.fmt(n)} crumbs`, true);
+      }
       if (!st.won && this.cake.left <= 0) {
         st.won = true;
         this.persist();
@@ -680,7 +687,9 @@
       const zFit = Math.min(viewW / (fr - fl), (groundCss * 0.92) / ft);
       const units = this.units();
       const p = units > 0 ? 0.25 + 0.75 * Math.pow(Math.min(1, units / 40), 0.7) : 0;
-      const zT = Math.min(zStart, zStart * Math.pow(zFit / zStart, p)) * this.uz * DPR;
+      // auto zoom never goes so far out that ants become specks; the − button can still go further
+      const zAuto = Math.max(Math.min(zStart, zStart * Math.pow(zFit / zStart, p)), Math.min(zStart, 1.1));
+      const zT = zAuto * this.uz * DPR;
 
       if (instant || !this.zCur) this.zCur = zT;
       else this.zCur += (zT - this.zCur) * Math.min(1, dt * 3);
