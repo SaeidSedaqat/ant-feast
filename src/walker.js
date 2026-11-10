@@ -53,7 +53,8 @@
       return arrived;
     }
 
-    // Manual control (scout). inp: {dx: -1|0|1, dy: -1|0|1}. Walls are climbed only while up/down is held.
+    // Manual control (scout). inp: {dx: -1|0|1, dy: -1|0|1}. Nothing moves unless a key is held;
+    // where the way ahead only goes up or down, the walking key follows it.
     drive(inp, dt) {
       const f = this.food, cell = f.cell;
       this.moving = false;
@@ -105,13 +106,13 @@
         // wall in front of the head?
         const pc = f.colAt(nx + dir * this.half), pr = f.rowAt(this.h + 0.5);
         if (pc >= 0 && f.solid(pc, pr)) {
-          const stop = f.faceX(pc, dir) - dir * this.half;
-          if ((stop - this.x) * dir > 0.01) { this.x = stop; this.moving = true; }
-          break;
+          // the only way on is up: grab the wall and keep climbing while the key is held
+          this.cling = dir; this.x = f.faceX(pc, dir) - dir * 0.3; this.mode = 'up'; this.moving = true;
+          return;
         }
         const ng = f.groundAt(nx, this.h + 3.5);
         if (ng < this.h - 3.5) {
-          // walked off a ledge: grab its edge and wait for "down"
+          // walked off a ledge: the only way on is down, so go over the edge
           const c = f.colAt(this.x);
           if (c >= 0) {
             const edge = f.x0 + (dir > 0 ? c + 1 : c) * cell;
@@ -142,7 +143,9 @@
         }
         this.letGo(); return;
       }
-      if (inp.dy > 0) {
+      // up/down keys climb; walking keys climb too: toward the wall = up, away from it = down
+      const v = inp.dy || (inp.dx === d ? 1 : inp.dx === -d ? -1 : 0);
+      if (v > 0) {
         this.mode = 'up'; this.flip = d < 0;
         let r = f.solid(wc, f.rowAt(this.h + 0.5)) ? f.rowAt(this.h + 0.5) : f.rowAt(this.h - 0.5);
         while (f.solid(wc, r + 1)) r++;
@@ -158,7 +161,7 @@
           this.x = f.faceX(wc, d) + d * Math.min(this.half, f.cell - 0.5);
           this.h = top;
         }
-      } else if (inp.dy < 0) {
+      } else if (v < 0) {
         this.mode = 'down'; this.flip = d > 0;
         const g = f.groundAt(this.x, this.h);
         const nh = Math.max(g, this.h - this.climb * dt);

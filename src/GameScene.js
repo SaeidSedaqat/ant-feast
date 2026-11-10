@@ -206,6 +206,7 @@
       if (!st.won) st.time += dt;
       this.updateScout(dt);
       this.updateAnts(dt);
+      this.food.update(dt);
       this.food.flush();
 
       this.trailT += dt;
@@ -463,7 +464,7 @@
       const touch = AF.ui.touch;
       let h = '';
       if (st.won) h = '';
-      else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶, climb with ▲ ▼, press BITE next to the cake' : 'Walk with ← →, climb walls with ↑ ↓, bite with Space';
+      else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶ (it climbs walls too), press BITE next to the cake' : 'Walk with ← → (it climbs walls too), bite with Space';
       else if (this.scout.load >= this.scout.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
       else if (!st.trail) h = st.crumbs >= C.costs.trail ? 'Build a trail so other ants can join in!' : 'Stronger jaws bite more · a trail costs ' + C.costs.trail;
@@ -477,7 +478,7 @@
       AF.save.write({
         crumbs: st.crumbs, jaws: st.jaws, trail: st.trail, ants: this.ants.length, time: st.time, won: st.won, hint: st.hint,
         scoutX: Math.round(this.scout.x * 10) / 10, scoutH: Math.round(this.scout.h * 10) / 10, scoutCling: this.scout.cling,
-        scoutLoad: this.scout.load, cells: this.food.encode(),
+        scoutLoad: this.scout.load, cells: this.food.encode(), cellsV: 2,
       });
     }
 

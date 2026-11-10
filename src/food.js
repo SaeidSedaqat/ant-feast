@@ -27,16 +27,24 @@
       this.full = this.shape();
 
       const n = this.cols * this.rows;
-      this.g = new Uint8Array(n);
-      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.full[c]; r++) this.g[r * this.cols + c] = 1;
+      // g: 1 = solid. o: the row the cell started on + 1 (its colour travels with it when it falls), 0 = empty.
+      this.g = new Uint8Array(n); this.o = new Uint8Array(n);
+      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.full[c]; r++) { this.g[r * this.cols + c] = 1; this.o[r * this.cols + c] = r + 1; }
       saved = saved || {};
-      if (typeof saved.cells === 'string' && saved.cells.length === n) {
-        for (let i = 0; i < n; i++) if (saved.cells.charCodeAt(i) !== 49) this.g[i] = 0;
+      const clear = (i) => { this.g[i] = 0; this.o[i] = 0; };
+      if (typeof saved.cells === 'string' && saved.cells.length === n && saved.cellsV === 2) {
+        for (let i = 0; i < n; i++) {
+          const v = saved.cells.charCodeAt(i) - 48;
+          if (v <= 0 || v > this.rows) clear(i); else { this.g[i] = 1; this.o[i] = v; }
+        }
+      } else if (typeof saved.cells === 'string' && saved.cells.length === n) { // older saves: 0/1 per cell
+        for (let i = 0; i < n; i++) if (saved.cells.charCodeAt(i) !== 49) clear(i);
       } else if (Array.isArray(saved.heights) && saved.heights.length === this.cols) { // older saves: column heights
-        for (let c = 0; c < this.cols; c++) for (let r = Math.max(0, saved.heights[c] | 0); r < this.rows; r++) this.g[r * this.cols + c] = 0;
+        for (let c = 0; c < this.cols; c++) for (let r = Math.max(0, saved.heights[c] | 0); r < this.rows; r++) clear(r * this.cols + c);
       }
       this.h = new Array(this.cols);
-      for (let c = 0; c < this.cols; c++) this.retop(c);
+      for (let c = 0; c < this.cols; c++) { this.compact(c); this.retop(c); }
+      this.fall = new Map(); // column -> { row, off, v }: cells from `row` up are drawn `off` units above where they are
       this.total = this.full.reduce((a, b) => a + b, 0);
       this.left = 0;
       for (let i = 0; i < n; i++) this.left += this.g[i];
@@ -83,15 +91,46 @@
       return SPONGE;
     }
 
-    paint(c, r) {
-      const col = this.color(c, r);
-      let k = 0.94 + hash(c, r) * 0.12;
+    // Paint cell (c, r), drawn `dy` world units above its grid spot (while falling).
+    paint(c, r, dy) {
+      const or = this.o[r * this.cols + c] - 1;
+      const col = this.color(c, or);
+      let k = 0.94 + hash(c, or) * 0.12;
       if (col === CHERRY) {
         const cx = (this.cols - 1) / 2;
-        if (c < cx && r > this.body + 2) k *= 1.25;
+        if (c < cx && or > this.body + 2) k *= 1.25;
       }
       this.ctx.fillStyle = rgb(col, k);
-      this.ctx.fillRect(c * this.cs, (this.rows - 1 - r) * this.cs, this.cs, this.cs);
+      this.ctx.fillRect(c * this.cs, Math.round((this.rows - 1 - r) * this.cs - (dy || 0) * this.px), this.cs, this.cs);
+    }
+
+    repaintCol(c) {
+      const fl = this.fall.get(c);
+      this.ctx.clearRect(c * this.cs, 0, this.cs, this.rows * this.cs);
+      for (let r = 0; r < this.h[c]; r++) this.paint(c, r, fl && r >= fl.row ? fl.off : 0);
+      this.dirty = true;
+    }
+
+    // Pack a column's cells down so there are no holes in it.
+    compact(c) {
+      let w = 0;
+      for (let r = 0; r < this.rows; r++) {
+        const i = r * this.cols + c;
+        if (!this.g[i]) continue;
+        if (w !== r) { const j = w * this.cols + c; this.g[j] = 1; this.o[j] = this.o[i]; this.g[i] = 0; this.o[i] = 0; }
+        w++;
+      }
+    }
+
+    // Falling animation: the cells settle quickly with gravity.
+    update(dt) {
+      if (!this.fall.size) return;
+      const G = C.food.fallG;
+      for (const [c, fl] of this.fall) {
+        fl.v += G * dt; fl.off -= fl.v * dt;
+        if (fl.off <= 0) this.fall.delete(c);
+        this.repaintCol(c);
+      }
     }
 
     flush() {
@@ -145,13 +184,23 @@
       return !this.solid(c - 1, r) || !this.solid(c + 1, r) || !this.solid(c, r - 1) || !this.solid(c, r + 1);
     }
 
+    // Eat cell (c, r). Everything above it in the column drops down one cell.
     remove(c, r) {
-      this.g[r * this.cols + c] = 0;
-      this.ctx.clearRect(c * this.cs, (this.rows - 1 - r) * this.cs, this.cs, this.cs);
-      this.dirty = true;
+      const cols = this.cols, color = toInt(this.color(c, this.o[r * cols + c] - 1));
+      for (let rr = r; rr < this.rows - 1; rr++) {
+        const i = rr * cols + c, j = i + cols;
+        this.g[i] = this.g[j]; this.o[i] = this.o[j];
+      }
+      const t = (this.rows - 1) * cols + c; this.g[t] = 0; this.o[t] = 0;
       this.left--;
-      if (r === this.h[c] - 1) this.retop(c);
-      return toInt(this.color(c, r));
+      this.retop(c);
+      if (this.h[c] > r) { // the part above falls
+        const fl = this.fall.get(c);
+        if (fl) { fl.row = Math.min(fl.row, r); fl.off = Math.min(fl.off + this.cell, this.cell * 3); }
+        else this.fall.set(c, { row: r, off: this.cell, v: 0 });
+      }
+      this.repaintCol(c);
+      return color;
     }
 
     // Scout bite: removes up to n exposed cells, nearest to (c, r) first, within `rad` cells.
@@ -191,7 +240,7 @@
 
     encode() {
       const parts = [];
-      for (let i = 0; i < this.g.length; i += 1024) parts.push(String.fromCharCode.apply(null, Array.from(this.g.subarray(i, i + 1024), (v) => 48 + v)));
+      for (let i = 0; i < this.o.length; i += 1024) parts.push(String.fromCharCode.apply(null, Array.from(this.o.subarray(i, i + 1024), (v) => 48 + v)));
       return parts.join('');
     }
   }
