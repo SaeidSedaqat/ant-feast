@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.51',
+  version: '0.0.52',
   saveKey: 'antfeast-save-v1',
   display: { maxPixelRatio: 2 },
 
@@ -22,8 +22,9 @@ AF.config = {
   },
 
   camera: {
-    startDiv: 200,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
-    minStartZoom: 2,
+    startDiv: 260,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
+    minStartZoom: 1.6,
+    lead: 70,           // camera looks this far ahead of the scout (toward the cake) at the start
     fitLeft: -70, fitRight: 760, fitTop: 300, // area that must fit once the colony is big
     antsForFullZoom: 40,
   },
