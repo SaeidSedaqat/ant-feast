@@ -1,5 +1,6 @@
-// The cake: a height map of cells (one height per column). Eating removes the top cell of a column,
-// so the food visibly shrinks. Cells are painted on a canvas texture; eaten cells are cleared.
+// The cake: a 2D pile of cells. Any exposed cell can be bitten off, so the scout can tunnel into the sides.
+// h[c] is the skyline (highest solid cell + 1) that the trail ants walk over.
+// Cells are painted on a canvas texture; eaten cells are cleared.
 (function () {
   const C = AF.config;
 
@@ -24,12 +25,21 @@
       this.base = f.plateH;
       this.plateL = this.x0 - f.platePad; this.plateR = this.x1 + f.platePad;
       this.full = this.shape();
-      this.h = this.full.slice();
-      if (Array.isArray(saved) && saved.length === this.cols) {
-        for (let i = 0; i < this.cols; i++) this.h[i] = Math.max(0, Math.min(this.full[i], saved[i] | 0));
+
+      const n = this.cols * this.rows;
+      this.g = new Uint8Array(n);
+      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.full[c]; r++) this.g[r * this.cols + c] = 1;
+      saved = saved || {};
+      if (typeof saved.cells === 'string' && saved.cells.length === n) {
+        for (let i = 0; i < n; i++) if (saved.cells.charCodeAt(i) !== 49) this.g[i] = 0;
+      } else if (Array.isArray(saved.heights) && saved.heights.length === this.cols) { // older saves: column heights
+        for (let c = 0; c < this.cols; c++) for (let r = Math.max(0, saved.heights[c] | 0); r < this.rows; r++) this.g[r * this.cols + c] = 0;
       }
+      this.h = new Array(this.cols);
+      for (let c = 0; c < this.cols; c++) this.retop(c);
       this.total = this.full.reduce((a, b) => a + b, 0);
-      this.left = this.h.reduce((a, b) => a + b, 0);
+      this.left = 0;
+      for (let i = 0; i < n; i++) this.left += this.g[i];
 
       this.px = 2; // canvas pixels per world unit
       const cs = this.cell * this.px;
@@ -37,7 +47,7 @@
       const cv = document.createElement('canvas');
       cv.width = this.cols * cs; cv.height = this.rows * cs;
       this.ctx = cv.getContext('2d');
-      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.h[c]; r++) this.paint(c, r);
+      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.rows; r++) if (this.g[r * this.cols + c]) this.paint(c, r);
       this.tex = scene.textures.addCanvas('cake', cv);
       this.dirty = true;
       this.img = scene.add.image(this.x0, -this.base, 'cake').setOrigin(0, 1).setScale(1 / this.px).setDepth(5);
@@ -84,25 +94,44 @@
       this.ctx.fillRect(c * this.cs, (this.rows - 1 - r) * this.cs, this.cs, this.cs);
     }
 
-    clear(c, r) {
-      this.ctx.clearRect(c * this.cs, (this.rows - 1 - r) * this.cs, this.cs, this.cs);
-      this.dirty = true;
-    }
-
     flush() {
       if (this.dirty) { this.tex.refresh(); this.dirty = false; }
     }
 
+    // ---------- grid lookups ----------
+    solid(c, r) { return c >= 0 && c < this.cols && r >= 0 && r < this.rows && this.g[r * this.cols + c] === 1; }
+    rowAt(h) { return Math.floor((h - this.base) / this.cell); }
+    topOf(r) { return this.base + (r + 1) * this.cell; }
     colAt(x) {
       if (x < this.x0 || x >= this.x1) return -1;
       return Math.floor((x - this.x0) / this.cell);
     }
-
     colCenter(c) { return this.x0 + (c + 0.5) * this.cell; }
+    // x of the face of column c that an ant on side -d sees (d = +1: wall is to the ant's right)
+    faceX(c, d) { return this.x0 + (d > 0 ? c : c + 1) * this.cell; }
 
+    retop(c) {
+      let r = this.rows - 1;
+      while (r >= 0 && !this.g[r * this.cols + c]) r--;
+      this.h[c] = r + 1;
+    }
+
+    // Skyline height (what trail ants walk on).
     surfaceAt(x) {
       const c = this.colAt(x);
       if (c >= 0) return this.base + this.h[c] * this.cell;
+      if (x >= this.plateL && x <= this.plateR) return this.base;
+      return 0;
+    }
+
+    // The support directly under feet at height h (top of the highest solid cell not above h).
+    groundAt(x, h) {
+      const c = this.colAt(x);
+      if (c >= 0) {
+        let r = Math.min(this.rows - 1, Math.floor((h + 0.01 - this.base) / this.cell) - 1);
+        for (; r >= 0; r--) if (this.g[r * this.cols + c]) return this.topOf(r);
+        return this.base;
+      }
       if (x >= this.plateL && x <= this.plateR) return this.base;
       return 0;
     }
@@ -112,7 +141,38 @@
       return -1;
     }
 
-    // Removes up to n cells around column `col` (highest column in the window first).
+    exposed(c, r) {
+      return !this.solid(c - 1, r) || !this.solid(c + 1, r) || !this.solid(c, r - 1) || !this.solid(c, r + 1);
+    }
+
+    remove(c, r) {
+      this.g[r * this.cols + c] = 0;
+      this.ctx.clearRect(c * this.cs, (this.rows - 1 - r) * this.cs, this.cs, this.cs);
+      this.dirty = true;
+      this.left--;
+      if (r === this.h[c] - 1) this.retop(c);
+      return toInt(this.color(c, r));
+    }
+
+    // Scout bite: removes up to n exposed cells, nearest to (c, r) first, within `rad` cells.
+    eatNear(c, r, n, rad) {
+      let eaten = 0, color = 0xe9b872;
+      for (let k = 0; k < n; k++) {
+        let bc = -1, br = -1, bd = 1e9;
+        for (let dc = -rad; dc <= rad; dc++) for (let dr = -rad; dr <= rad; dr++) {
+          const cc = c + dc, rr = r + dr;
+          if (!this.solid(cc, rr) || !this.exposed(cc, rr)) continue;
+          const d = dc * dc + dr * dr - dr * 0.01; // ties: prefer the higher cell
+          if (d < bd) { bd = d; bc = cc; br = rr; }
+        }
+        if (bc < 0) break;
+        color = this.remove(bc, br);
+        eaten++;
+      }
+      return { n: eaten, color };
+    }
+
+    // Trail-ant bite: removes the top cell of the highest column around `col`.
     eat(col, n, spread) {
       let eaten = 0, color = 0xe9b872;
       if (col < 0) return { n: 0, color };
@@ -123,13 +183,16 @@
           if (best < 0 || this.h[j] > this.h[best] || (this.h[j] === this.h[best] && Math.abs(j - col) < Math.abs(best - col))) best = j;
         }
         if (best < 0) break;
-        const r = --this.h[best];
-        color = toInt(this.color(best, r));
-        this.clear(best, r);
+        color = this.remove(best, this.h[best] - 1);
         eaten++;
       }
-      this.left -= eaten;
       return { n: eaten, color };
+    }
+
+    encode() {
+      const parts = [];
+      for (let i = 0; i < this.g.length; i += 1024) parts.push(String.fromCharCode.apply(null, Array.from(this.g.subarray(i, i + 1024), (v) => 48 + v)));
+      return parts.join('');
     }
   }
 

@@ -37,6 +37,13 @@
     #bar button:disabled { filter: grayscale(0.7) brightness(0.75); cursor: default; }
     #bar button:focus-visible, .pill:focus-visible { outline: 3px solid #fff; }
     button.pill { color: #fff7e6; }
+    #pad { display: flex; justify-content: space-between; align-items: center; margin-top: 8px; gap: 8px; }
+    #pad .grp { display: flex; gap: 8px; }
+    #pad button { width: clamp(48px, 13vmin, 72px); height: clamp(48px, 13vmin, 72px); border-radius: 50%; font-size: clamp(18px, 5vmin, 28px);
+      background: rgba(255, 236, 190, 0.85); color: #3b1d08; box-shadow: 0 3px 0 rgba(90, 44, 0, 0.6);
+      touch-action: none; user-select: none; -webkit-user-select: none; -webkit-touch-callout: none; }
+    #pad button.bite { width: clamp(76px, 20vmin, 110px); border-radius: 999px; background: #d8434f; color: #fff; font-weight: 800; font-size: clamp(15px, 4vmin, 22px); }
+    #pad button.on { transform: translateY(3px); box-shadow: 0 0 0 rgba(0, 0, 0, 0); filter: brightness(0.85); }
     [hidden] { display: none !important; }
     #win { position: fixed; inset: 0; display: flex; align-items: center; justify-content: center; background: rgba(20, 10, 8, 0.6); pointer-events: auto; }
     #win div { background: #fff1d6; color: #3b1d08; border-radius: 20px; padding: 1.4em 2em; text-align: center; font-size: clamp(16px, 2.6vmin, 30px); max-width: 80vw; }
@@ -64,6 +71,10 @@
       <button id="bTrail"></button>
       <button id="bAnt" hidden></button>
     </div>
+    <div id="pad" hidden>
+      <div class="grp"><button data-k="left" aria-label="Walk left">◀</button><button data-k="right" aria-label="Walk right">▶</button></div>
+      <div class="grp"><button data-k="up" aria-label="Climb up">▲</button><button data-k="down" aria-label="Climb down">▼</button><button data-k="bite" class="bite">BITE</button></div>
+    </div>
   </div>
   <div id="win" hidden>
     <div>
@@ -74,13 +85,13 @@
     </div>
   </div>
   <script src="lib/phaser-4.2.1.min.js"></script>
-  <script src="src/config.js?v=0.0.53"></script>
-  <script src="src/food.js?v=0.0.53"></script>
-  <script src="src/art.js?v=0.0.53"></script>
-  <script src="src/walker.js?v=0.0.53"></script>
-  <script src="src/support.js?v=0.0.53"></script>
-  <script src="src/ui.js?v=0.0.53"></script>
-  <script src="src/GameScene.js?v=0.0.53"></script>
-  <script src="src/main.js?v=0.0.53"></script>
+  <script src="src/config.js?v=0.0.63"></script>
+  <script src="src/food.js?v=0.0.63"></script>
+  <script src="src/art.js?v=0.0.63"></script>
+  <script src="src/walker.js?v=0.0.63"></script>
+  <script src="src/support.js?v=0.0.63"></script>
+  <script src="src/ui.js?v=0.0.63"></script>
+  <script src="src/GameScene.js?v=0.0.63"></script>
+  <script src="src/main.js?v=0.0.63"></script>
 </body>
 </html>

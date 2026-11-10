@@ -19,18 +19,26 @@
       };
       AF.makeTextures(this);
       this.buildScenery();
-      this.food = new AF.Food(this, s.heights);
+      this.food = new AF.Food(this, s);
 
       const sx = typeof s.scoutX === 'number' && isFinite(s.scoutX) ? Phaser.Math.Clamp(s.scoutX, C.world.left, C.world.right) : 30;
-      this.scout = new AF.Walker(this, this.food, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20 });
-      this.scout.load = Math.max(0, s.scoutLoad | 0);
-      this.scout.capacity = this.scoutCap();
+      const sc = this.scout = new AF.Walker(this, this.food, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20 });
+      sc.load = Math.max(0, s.scoutLoad | 0);
+      sc.capacity = this.scoutCap();
+      if (typeof s.scoutH === 'number' && isFinite(s.scoutH)) {
+        sc.h = Math.max(0, s.scoutH);
+        sc.cling = s.scoutCling === 1 || s.scoutCling === -1 ? s.scoutCling : 0;
+        if (sc.cling && !sc.holds(sc.wallCol())) sc.cling = 0;
+        if (sc.cling) sc.mode = 'up';
+        const f = this.food, c = f.colAt(sc.x);
+        if (c >= 0 && f.solid(c, f.rowAt(sc.h + 0.5))) { sc.cling = 0; sc.h = f.surfaceAt(sc.x); }
+      }
       this.marker = this.add.image(0, 0, 'marker').setDepth(21);
-      this.target = this.scout.x; this.biting = false; this.biteT = 0;
+      this.biteT = 0; this.biteWas = false;
 
-      this.ants = [];
+      this.ants = []; this.seq = 0;
       const n = this.st.trail ? Math.max(0, s.ants | 0) : 0;
-      for (let i = 0; i < n; i++) this.spawnAnt(-Math.random() * 14);
+      for (let i = 0; i < n; i++) this.spawnAnt(-i * C.ant.gap);
 
       this.trailG = this.add.graphics().setDepth(6);
       this.trailT = 0;
@@ -104,55 +112,51 @@
     }
 
     // ---------- input ----------
+    // Keyboard on PC, on-screen pad on phones. No mouse/tap movement.
     setupInput() {
-      this.input.on('pointerdown', (p) => {
-        if (this.st.won) return;
-        const w = this.cameras.main.getWorldPoint(p.x, p.y);
-        this.tapAt(w.x);
-      });
       const kb = this.input.keyboard;
-      if (kb) {
-        this.keys = kb.addKeys('LEFT,RIGHT,A,D,SPACE');
-        this.keyHeld = false;
-      }
+      if (kb) this.keys = kb.addKeys('LEFT,RIGHT,UP,DOWN,A,D,W,S,SPACE');
+      AF.pad = AF.pad || { left: false, right: false, up: false, down: false, bite: false };
     }
 
-    tapAt(wx) {
-      const f = this.food;
-      if (Math.abs(wx - C.world.nestX) < 30) { this.target = C.world.nestX; this.biting = false; return; }
-      let col = f.colAt(wx);
-      if (col >= 0 && f.h[col] === 0) col = this.nearestFilled(col, 3);
-      if (col >= 0 && this.scout.load < this.scout.capacity) {
-        this.target = f.colCenter(col); this.biting = true; this.biteT = 0; return;
-      }
-      this.target = Phaser.Math.Clamp(wx, C.world.left, C.world.right);
-      this.biting = false;
+    readInput() {
+      const k = this.keys, p = AF.pad;
+      const d = (o) => !!(o && o.isDown);
+      if (this.st.won) return { dx: 0, dy: 0, bite: false };
+      const left = (k && (d(k.LEFT) || d(k.A))) || p.left, right = (k && (d(k.RIGHT) || d(k.D))) || p.right;
+      const up = (k && (d(k.UP) || d(k.W))) || p.up, down = (k && (d(k.DOWN) || d(k.S))) || p.down;
+      return { dx: (right ? 1 : 0) - (left ? 1 : 0), dy: (up ? 1 : 0) - (down ? 1 : 0), bite: (k && d(k.SPACE)) || p.bite };
     }
 
-    nearestFilled(col, range) {
-      const f = this.food;
-      for (let d = 0; d <= range; d++) {
-        if (col - d >= 0 && f.h[col - d] > 0) return col - d;
-        if (col + d < f.cols && f.h[col + d] > 0) return col + d;
+    // Bite the cake cells next to the scout's head (any side of the pile, not only the top).
+    scoutBite() {
+      const sc = this.scout, f = this.food, st = this.st;
+      if (sc.load >= sc.capacity) return;
+      const n = Math.min(st.jaws, sc.capacity - sc.load), rad = C.scout.biteSpread;
+      const tries = [];
+      if (sc.cling) tries.push([sc.wallCol(), f.rowAt(sc.h - 0.5)], [sc.wallCol(), f.rowAt(sc.h + 0.5)]);
+      else {
+        const face = sc.flip ? -1 : 1;
+        tries.push([f.colAt(sc.x + face * (sc.half + 1)), f.rowAt(sc.h + 0.5)]);
+        tries.push([f.colAt(sc.x), f.rowAt(sc.h - 0.5)]);
+        tries.push([f.colAt(sc.x + face * (sc.half + 1)), f.rowAt(sc.h - 0.5)]);
       }
-      return -1;
-    }
-
-    handleKeys() {
-      const k = this.keys;
-      if (!k || this.st.won) return;
-      const left = k.LEFT.isDown || k.A.isDown, right = k.RIGHT.isDown || k.D.isDown;
-      if (left !== right) {
-        this.target = Phaser.Math.Clamp(this.scout.x + (left ? -40 : 40), C.world.left, C.world.right);
-        this.biting = false; this.keyHeld = true;
-      } else if (this.keyHeld) { this.keyHeld = false; this.target = this.scout.x; }
-      if (Phaser.Input.Keyboard.JustDown(k.SPACE)) {
-        const f = this.food, sc = this.scout;
-        let col = f.colAt(sc.x);
-        if (col < 0 || f.h[col] === 0) col = f.colAt(sc.x + (sc.flip ? -1 : 1) * f.cell);
-        if (col >= 0) col = this.nearestFilled(col, 2);
-        if (Math.abs(sc.x - C.world.nestX) < 30) { this.target = C.world.nestX; this.biting = false; }
-        else if (col >= 0 && sc.load < sc.capacity) { this.target = f.colCenter(col); this.biting = true; this.biteT = 0; }
+      for (const [c, r] of tries) {
+        if (c < 0 || r < 0) continue;
+        // only bite if a cell actually touches the ant there
+        let near = false;
+        for (let dc = -1; dc <= 1 && !near; dc++) for (let dr = -1; dr <= 1; dr++) if (f.solid(c + dc, r + dr) && (dc === 0 || dr === 0)) { near = true; break; }
+        if (!near) continue;
+        const res = f.eatNear(c, r, n, rad);
+        if (res.n > 0) {
+          sc.load += res.n; sc.color = res.color;
+          const face = sc.flip ? -1 : 1;
+          if (sc.cling) this.spray(sc.x + sc.cling * 3, -sc.h - 2, res.color, 3);
+          else this.spray(sc.x + face * 6, -sc.h - 3, res.color, 3);
+          AF.audio.chomp();
+          if (st.hint === 0) st.hint = 1;
+          return;
+        }
       }
     }
 
@@ -187,11 +191,12 @@
       this.persist();
     }
 
+    // New ants join the back of the outgoing queue at the nest.
     spawnAnt(dx) {
-      const sp = 0.9 + Math.random() * 0.2;
-      const w = new AF.Walker(this, this.food, C.world.nestX + dx, { speed: C.ant.speed * sp, climb: C.ant.climb * sp, texture: 'ant', scale: C.ant.scale, depth: 15 + Math.random() * 0.5 });
+      const x = Math.max(C.world.left + 4, C.world.nestX + dx);
+      const w = new AF.Walker(this, this.food, x, { speed: C.ant.speed, climb: C.ant.climb, texture: 'ant', scale: C.ant.scale, depth: 15 + Math.random() * 0.5 });
       w.capacity = this.antCap();
-      this.ants.push({ w, state: 'out', off: Math.floor(Math.random() * 3), biteT: Math.random() * 0.3, home: (Math.random() - 0.5) * 8 });
+      this.ants.push({ w, state: 'out', seq: ++this.seq, bseq: 0, biteT: 0, D: 0 });
     }
 
     // ---------- loop ----------
@@ -199,7 +204,6 @@
       const dt = Math.min(delta / 1000, 0.05);
       const st = this.st;
       if (!st.won) st.time += dt;
-      this.handleKeys();
       this.updateScout(dt);
       this.updateAnts(dt);
       this.food.flush();
@@ -213,7 +217,7 @@
       }
 
       if (!st.won && this.food.left <= 0) {
-        st.won = true; this.biting = false;
+        st.won = true;
         this.persist();
         AF.audio.blip(990);
         this.time.delayedCall(600, () => AF.ui.showWin(st.time));
@@ -228,33 +232,23 @@
     }
 
     updateScout(dt) {
-      const sc = this.scout, f = this.food, st = this.st;
-      const arrived = sc.step(this.target, dt);
+      const sc = this.scout, st = this.st;
+      const inp = this.readInput();
+      sc.drive(inp, dt);
 
-      if (this.biting && arrived) {
-        this.biteT += dt;
-        if (this.biteT >= C.scout.biteTime) {
-          this.biteT = 0;
-          if (sc.load >= sc.capacity) this.biting = false;
-          else {
-            let col = f.colAt(sc.x);
-            const r = f.eat(col, Math.min(st.jaws, sc.capacity - sc.load), C.scout.biteSpread);
-            if (r.n > 0) {
-              sc.load += r.n; sc.color = r.color;
-              this.spray(sc.x + (sc.flip ? -5 : 5), -sc.h - 3, r.color, 3);
-              AF.audio.chomp();
-              if (st.hint === 0) st.hint = 1;
-              if (sc.load >= sc.capacity) this.biting = false;
-            } else {
-              col = this.nearestFilled(col < 0 ? f.colAt(this.target) : col, 6);
-              if (col >= 0) this.target = f.colCenter(col); else this.biting = false;
-            }
-          }
+      // bite: first press bites at once, holding repeats every biteTime
+      const falling = !sc.cling && sc.h > this.food.groundAt(sc.x, sc.h) + 0.01;
+      if (inp.bite && !falling) {
+        if (!this.biteWas) { this.biteT = 0; this.scoutBite(); }
+        else {
+          this.biteT += dt;
+          if (this.biteT >= C.scout.biteTime) { this.biteT = 0; this.scoutBite(); }
         }
       }
+      this.biteWas = inp.bite;
 
       // drop off at the nest
-      if (sc.load > 0 && Math.abs(sc.x - C.world.nestX) <= C.world.nestRadius && sc.h < 1) {
+      if (sc.load > 0 && !sc.cling && Math.abs(sc.x - C.world.nestX) <= C.world.nestRadius && sc.h < 1) {
         const n = sc.load; sc.load = 0;
         st.crumbs += n;
         this.floater(sc.x, -14, '+' + n, 18);
@@ -269,38 +263,106 @@
       this.marker.setScale(Math.max(ms, 0.2)).setPosition(sc.x, -sc.h - 13 - (10 * AF.DPR) / z + bob);
     }
 
-    updateAnts(dt) {
-      const f = this.food, head = f.headCol(), nest = C.world.nestX;
-      for (const a of this.ants) {
-        const w = a.w;
-        if (a.state === 'out') {
-          if (head < 0) { a.state = 'back'; }
-          else {
-            const col = Math.min(f.cols - 1, head + a.off);
-            if (w.step(f.colCenter(col), dt)) {
-              a.biteT += dt;
-              if (a.biteT >= C.ant.biteTime) {
-                a.biteT = 0;
-                const r = f.eat(f.colAt(w.x), Math.min(this.st.jaws, w.capacity - w.load), C.ant.biteSpread);
-                if (r.n > 0) {
-                  w.load += r.n; w.color = r.color;
-                  if (Math.random() < 0.3) this.spray(w.x + (w.flip ? -3 : 3), -w.h - 2, r.color, 1);
-                  if (Math.random() < 0.08) AF.audio.chomp();
-                }
-                if (w.load >= w.capacity || (r.n === 0 && w.load > 0)) a.state = 'back';
-                else if (r.n === 0) a.off = Math.floor(Math.random() * 3);
-              }
-            }
-          }
-        }
-        if (a.state === 'back') {
-          if (w.step(nest + a.home, dt)) {
-            if (w.load > 0) { this.st.crumbs += w.load; this.antGain += w.load; w.load = 0; }
-            if (head >= 0) { a.state = 'out'; a.off = Math.floor(Math.random() * 3); }
-          }
-        }
-        w.render(dt);
+    // Path distance along the skyline from the nest, per column: L[c] at column c's left edge
+    // (still at the previous height P[c]).
+    buildPath() {
+      const f = this.food, n = f.cols, cell = f.cell;
+      if (!this.L) { this.L = new Float64Array(n + 1); this.P = new Float64Array(n + 1); }
+      let d = (f.x0 - C.world.nestX) + f.base, prev = f.base;
+      for (let c = 0; c < n; c++) {
+        const s = f.base + f.h[c] * cell;
+        this.L[c] = d; this.P[c] = prev;
+        d += Math.abs(s - prev) + cell; prev = s;
       }
+      this.L[n] = d; this.P[n] = prev;
+    }
+
+    pathD(x, h) {
+      const f = this.food, cell = f.cell, nest = C.world.nestX;
+      if (x < f.x0) {
+        if (x > f.x0 - 2 && h > f.base + 0.5) return this.L[0] + (h - f.base);
+        return x - nest + (x >= f.plateL ? f.base : 0);
+      }
+      if (x >= f.x1) return 1e6;
+      const c = f.colAt(x), left = f.x0 + c * cell, s = f.base + f.h[c] * cell;
+      if (h > s + 0.5) {
+        const ns = c + 1 < f.cols ? f.base + f.h[c + 1] * cell : f.base;
+        if (left + cell - x < 2 && ns >= h - 0.5) return this.L[c + 1] + (h - s); // climbing into the next column
+        return this.L[c] + Math.max(0, this.P[c] - h) + (x - left); // dropping into this column
+      }
+      return this.L[c] + Math.abs(s - this.P[c]) + (x - left);
+    }
+
+    // A stopped trail ant still drops if the food under it was eaten.
+    settle(w, dt) {
+      const f = this.food, s = f.surfaceAt(w.x);
+      if (w.h <= s + 0.01) { if (w.h < s) w.h = s; return; }
+      if (f.surfaceAt(w.x + 1.5) >= w.h - 0.01 || f.surfaceAt(w.x - 1.5) >= w.h - 0.01) return; // holding a wall
+      w.h = Math.max(s, w.h - w.climb * dt); w.mode = 'down'; w.moving = true;
+      if (w.h <= s + 0.01) w.mode = 'walk';
+    }
+
+    // Trail ants march in single file: out-going ants keep `gap` behind the one in front,
+    // returning ants do the same on the way home; new and returning ants join the back.
+    updateAnts(dt) {
+      const f = this.food, head = f.headCol(), nest = C.world.nestX, gap = C.ant.gap;
+      this.buildPath();
+      for (const a of this.ants) {
+        a.D = this.pathD(a.w.x, a.w.h);
+        if (head < 0 && a.state === 'out') { a.state = 'back'; a.bseq = ++this.seq; }
+      }
+
+      // ----- out-going queue (ordered by join order) -----
+      const out = this.ants.filter((a) => a.state === 'out').sort((p, q) => p.seq - q.seq);
+      if (out.length) {
+        let fc = head;
+        while (fc + 1 < f.cols && fc - head < 2 && f.h[fc + 1] > 0) fc++;
+        const fx = f.colCenter(fc), frontD = this.pathD(fx, f.surfaceAt(fx));
+        let prevD = null;
+        for (const a of out) {
+          const w = a.w;
+          const limit = prevD === null ? frontD : prevD - gap;
+          w.step(fx, dt, limit - a.D);
+          if (!w.moving) this.settle(w, dt);
+          a.D = this.pathD(w.x, w.h);
+          prevD = a.D;
+
+          // bite while standing on the food
+          const c = f.colAt(w.x);
+          if (!w.moving && c >= 0 && f.h[c] > 0 && Math.abs(w.h - f.surfaceAt(w.x)) < 0.5) {
+            w.mode = 'walk';
+            a.biteT += dt;
+            if (a.biteT >= C.ant.biteTime) {
+              a.biteT = 0;
+              const r = f.eat(c, Math.min(this.st.jaws, w.capacity - w.load), C.ant.biteSpread);
+              if (r.n > 0) {
+                w.load += r.n; w.color = r.color;
+                if (Math.random() < 0.3) this.spray(w.x + (w.flip ? -3 : 3), -w.h - 2, r.color, 1);
+                if (Math.random() < 0.08) AF.audio.chomp();
+              }
+              if (w.load >= w.capacity || (r.n === 0 && w.load > 0)) { a.state = 'back'; a.bseq = ++this.seq; }
+            }
+          } else a.biteT = 0;
+        }
+      }
+
+      // ----- returning queue (ordered by how close to the nest) -----
+      const back = this.ants.filter((a) => a.state === 'back').sort((p, q) => p.D - q.D || p.bseq - q.bseq);
+      let prevD = null;
+      for (const a of back) {
+        const w = a.w;
+        const lim = prevD === null ? Infinity : a.D - (prevD + gap);
+        const home = w.step(nest, dt, lim);
+        if (!w.moving) this.settle(w, dt);
+        a.D = this.pathD(w.x, w.h);
+        prevD = a.D;
+        if (home) {
+          if (w.load > 0) { this.st.crumbs += w.load; this.antGain += w.load; w.load = 0; }
+          if (head >= 0) { a.state = 'out'; a.seq = ++this.seq; a.biteT = 0; }
+        }
+      }
+
+      for (const a of this.ants) a.w.render(dt);
     }
 
     drawTrail() {
@@ -398,11 +460,11 @@
         ants: this.ants.length, jaws: st.jaws, jawsMax: st.jaws >= C.costs.jawsMax, jawsCost: jawsCost(st.jaws),
         trail: st.trail, trailCost: C.costs.trail, antCost: antCost(this.ants.length), time: st.time,
       });
-      const touch = window.matchMedia && matchMedia('(pointer: coarse)').matches;
+      const touch = AF.ui.touch;
       let h = '';
       if (st.won) h = '';
-      else if (st.hint === 0) h = touch ? 'Tap the cake to walk over and bite it' : 'Click the cake to walk over and bite it (or use ← → and Space)';
-      else if (this.scout.load >= this.scout.capacity && st.hint < 2) h = 'Your jaws are full! Tap the nest hole to drop the crumbs';
+      else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶, climb with ▲ ▼, press BITE next to the cake' : 'Walk with ← →, climb walls with ↑ ↓, bite with Space';
+      else if (this.scout.load >= this.scout.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
       else if (!st.trail) h = st.crumbs >= C.costs.trail ? 'Build a trail so other ants can join in!' : 'Stronger jaws bite more · a trail costs ' + C.costs.trail;
       else if (this.ants.length < 3) h = 'Hire more ants. They march the trail on their own';
@@ -414,7 +476,8 @@
       const st = this.st;
       AF.save.write({
         crumbs: st.crumbs, jaws: st.jaws, trail: st.trail, ants: this.ants.length, time: st.time, won: st.won, hint: st.hint,
-        scoutX: Math.round(this.scout.x * 10) / 10, scoutLoad: this.scout.load, heights: this.food.h,
+        scoutX: Math.round(this.scout.x * 10) / 10, scoutH: Math.round(this.scout.h * 10) / 10, scoutCling: this.scout.cling,
+        scoutLoad: this.scout.load, cells: this.food.encode(),
       });
     }
 

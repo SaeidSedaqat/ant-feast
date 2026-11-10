@@ -18,6 +18,27 @@
       $('bAgain').onclick = () => scene.resetGame();
       // keep keyboard focus off buttons so Space bites instead of re-clicking
       document.querySelectorAll('#ui button').forEach((b) => b.addEventListener('mouseup', () => b.blur()));
+      this.initPad();
+    },
+
+    // On-screen controls for phones: shown on touch screens only.
+    initPad() {
+      AF.pad = AF.pad || { left: false, right: false, up: false, down: false, bite: false };
+      const pad = $('pad');
+      const show = () => { if (this.touch) return; this.touch = true; pad.hidden = false; };
+      this.touch = false;
+      if (window.matchMedia && matchMedia('(pointer: coarse)').matches) show();
+      window.addEventListener('touchstart', show, { passive: true });
+      pad.querySelectorAll('button').forEach((b) => {
+        const k = b.dataset.k;
+        const on = (e) => { e.preventDefault(); AF.pad[k] = true; b.classList.add('on'); try { b.setPointerCapture(e.pointerId); } catch (_) {} };
+        const off = (e) => { e.preventDefault(); AF.pad[k] = false; b.classList.remove('on'); };
+        b.addEventListener('pointerdown', on);
+        b.addEventListener('pointerup', off);
+        b.addEventListener('pointercancel', off);
+        b.addEventListener('lostpointercapture', off);
+        b.addEventListener('contextmenu', (e) => e.preventDefault());
+      });
     },
 
     barHeight() {

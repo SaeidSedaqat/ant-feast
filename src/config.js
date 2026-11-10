@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.53',
+  version: '0.0.63',
   saveKey: 'antfeast-save-v1',
   display: { maxPixelRatio: 2 },
 
@@ -13,7 +13,7 @@ AF.config = {
   antLength: 10, // world units
 
   scout: { speed: 90, climb: 80, biteTime: 0.18, capPerPower: 8, scale: 1.4, biteSpread: 2 },
-  ant: { speed: 70, climb: 60, biteTime: 0.4, capPerPower: 2, scale: 1, biteSpread: 1 },
+  ant: { speed: 70, climb: 60, biteTime: 0.4, capPerPower: 2, scale: 1, biteSpread: 1, gap: 12 },
 
   costs: {
     jawsBase: 25, jawsGrowth: 2, jawsMax: 7,
