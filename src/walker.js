@@ -25,7 +25,10 @@
       this.moving = false;
       while (budget > 0.0001 && guard-- > 0) {
         const s = f.surfaceAt(this.x);
-        if (this.h > s + 0.01) { // food eaten below us, or we walked off a ledge
+        const dirT = Math.abs(tx - this.x) < 0.4 ? 0 : Math.sign(tx - this.x);
+        const sAhead = dirT ? f.surfaceAt(this.x + dirT * 1.5) : s;
+        // on a wall we are climbing, the ground under our x is lower but we hang on
+        if (this.h > s + 0.01 && !(sAhead > this.h + 0.01)) { // food eaten below us, or we walked off a ledge
           const d = Math.min(budget * climbRatio, this.h - s);
           this.h -= d; budget -= d / climbRatio; this.mode = 'down'; this.moving = true; continue;
         }

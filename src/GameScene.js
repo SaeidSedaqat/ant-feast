@@ -55,7 +55,7 @@
     buildScenery() {
       const far = this.add.graphics().setDepth(1);
       const haze = 0x8c6f73;
-      far.fillStyle(haze, 0.35);
+      far.fillStyle(haze, 0.2);
       // the massive final dish: a towering covered platter far behind
       far.fillEllipse(470, -8, 980, 40);
       far.beginPath(); far.arc(470, -14, 380, Math.PI, 0, false); far.closePath(); far.fillPath();
@@ -86,7 +86,7 @@
       const t = this.add.graphics().setDepth(2);
       t.fillStyle(0xe8d6b4, 1).fillRect(-3000, -8, 7000, 8);
       t.fillStyle(0xffffff, 0.25).fillRect(-3000, -8, 7000, 1.5);
-      this.add.tileSprite(500, 0, 7000, 900, 'gingham').setOrigin(0.5, 0).setDepth(2).setTileScale(0.5);
+      this.add.tileSprite(500, 0, 7000, 900, 'gingham').setOrigin(0.5, 0).setDepth(2).setTileScale(0.3);
       const sh = this.add.graphics().setDepth(3);
       sh.fillStyle(0x000000, 0.16).fillRect(-3000, 0, 7000, 5);
 
@@ -372,7 +372,7 @@
       const z = this.zCur;
 
       // horizontal: follow the scout, drifting to the whole-scene view as the colony grows
-      let cx = Phaser.Math.Linear(this.scout.x, (k.fitLeft + k.fitRight) / 2, p);
+      let cx = Phaser.Math.Linear(this.scout.x + k.lead, (k.fitLeft + k.fitRight) / 2, p);
       const half = W / 2 / z;
       if (C.world.right - C.world.left <= 2 * half) cx = (C.world.left + C.world.right) / 2;
       else cx = Phaser.Math.Clamp(cx, C.world.left + half, C.world.right - half);
