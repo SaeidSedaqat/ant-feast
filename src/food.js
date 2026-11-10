@@ -1,4 +1,4 @@
-// The cake: a 2D pile of cells. Any exposed cell can be bitten off, so the scout can tunnel into the sides.
+// The cake: a 2D pile of cells. Ants eat the top cell of a column; the cells above a bitten one fall down.
 // h[c] is the skyline (highest solid cell + 1) that the trail ants walk over.
 // Cells are painted on a canvas texture; eaten cells are cleared.
 (function () {
@@ -180,10 +180,6 @@
       return -1;
     }
 
-    exposed(c, r) {
-      return !this.solid(c - 1, r) || !this.solid(c + 1, r) || !this.solid(c, r - 1) || !this.solid(c, r + 1);
-    }
-
     // Eat cell (c, r). Everything above it in the column drops down one cell.
     remove(c, r) {
       const cols = this.cols, color = toInt(this.color(c, this.o[r * cols + c] - 1));
@@ -203,23 +199,6 @@
       return color;
     }
 
-    // Scout bite: removes up to n exposed cells, nearest to (c, r) first, within `rad` cells.
-    eatNear(c, r, n, rad) {
-      let eaten = 0, color = 0xe9b872;
-      for (let k = 0; k < n; k++) {
-        let bc = -1, br = -1, bd = 1e9;
-        for (let dc = -rad; dc <= rad; dc++) for (let dr = -rad; dr <= rad; dr++) {
-          const cc = c + dc, rr = r + dr;
-          if (!this.solid(cc, rr) || !this.exposed(cc, rr)) continue;
-          const d = dc * dc + dr * dr - dr * 0.01; // ties: prefer the higher cell
-          if (d < bd) { bd = d; bc = cc; br = rr; }
-        }
-        if (bc < 0) break;
-        color = this.remove(bc, br);
-        eaten++;
-      }
-      return { n: eaten, color };
-    }
 
     // Trail-ant bite: removes the top cell of the highest column around `col`.
     eat(col, n, spread) {
