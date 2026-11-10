@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.95',
+  version: '0.0.96',
   saveKey: 'antfeast-save-v2',
   display: { maxPixelRatio: 2 },
 
@@ -19,17 +19,17 @@ AF.config = {
   antLength: 10, // world units
 
   scout: { speed: 90, climb: 80, biteTime: 0.18, capPerPower: 8, scale: 1.4 },
-  ant: { speed: 62, climb: 52, biteTime: 0.45, scale: 1, gap: 12 },
-  soldier: { speed: 50, climb: 42, biteTime: 0.5, scale: 1.35, cap: 6, bite: 2, strength: 3 },
+  ant: { speed: 80, climb: 70, biteTime: 0.3, scale: 1, gap: 12, cap: 3 },
+  soldier: { speed: 64, climb: 56, biteTime: 0.35, scale: 1.35, cap: 8, bite: 2, strength: 3 },
 
   costs: {
     jawsBase: 25, jawsGrowth: 2, jawsMax: 7,
-    trails: { cake: 40, bread: 260, grapes: 700 },
-    antBase: 10, antGrowth: 1.075, antMax: 60,
-    soldierBase: 90, soldierGrowth: 1.3, soldierMax: 12,
-    speed: { base: 40, growth: 1.55, max: 6 },   // +20% walking speed per level
-    carry: { base: 30, growth: 1.6, max: 6 },    // carry 2 per level
-    bite: { base: 60, growth: 1.8, max: 5 },     // cells per bite = level
+    trails: { cake: 40, bread: 200, grapes: 550 },
+    antBase: 10, antGrowth: 1.12, antMax: 60,
+    soldierBase: 80, soldierGrowth: 1.4, soldierMax: 12,
+    speed: { base: 45, growth: 2, max: 6 },      // +25% walking speed per level
+    carry: { base: 40, growth: 2, max: 6 },      // +3 carry per level
+    bite: { base: 70, growth: 2.2, max: 5 },     // cells per bite = level
   },
 
   camera: {

@@ -168,13 +168,13 @@
     // ---------- economy ----------
     scoutCap() { return C.scout.capPerPower * this.st.jaws; }
     unitStats(kind) {
-      const u = this.st.up, spd = 1 + 0.2 * (u.speed - 1);
+      const u = this.st.up, spd = 1 + 0.25 * (u.speed - 1);
       if (kind === 'soldier') {
         const s = C.soldier;
-        return { speed: s.speed * spd, climb: s.climb * spd, cap: s.cap + 2 * (u.carry - 1), bite: s.bite + (u.bite - 1), str: s.strength, biteTime: s.biteTime };
+        return { speed: s.speed * spd, climb: s.climb * spd, cap: s.cap + 3 * (u.carry - 1), bite: s.bite + (u.bite - 1), str: s.strength, biteTime: s.biteTime };
       }
       const a = C.ant;
-      return { speed: a.speed * spd, climb: a.climb * spd, cap: 2 * u.carry, bite: u.bite, str: 1, biteTime: a.biteTime };
+      return { speed: a.speed * spd, climb: a.climb * spd, cap: a.cap + 3 * (u.carry - 1), bite: u.bite, str: 1, biteTime: a.biteTime };
     }
     applyStats() {
       for (const a of this.ants) {
