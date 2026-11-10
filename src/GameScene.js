@@ -63,7 +63,7 @@
       if (this.st.won) AF.ui.showWin(this.st.time);
       this.refreshUI();
       this.updateCamera(0, true);
-      if (window.AFLoaded) this.time.delayedCall(60, () => window.AFLoaded());
+      if (window.AFLoaded) setTimeout(() => window.AFLoaded(), 60);
     }
 
     anyTrail() { const t = this.st.trails; return t.cake || t.bread || t.grapes; }
