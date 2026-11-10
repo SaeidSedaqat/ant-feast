@@ -2,7 +2,7 @@
 (function () {
   const ANT_W = 96, ANT_H = 48;
 
-  function drawAnt(g, frame, body, hi) {
+  function drawAnt(g, frame, body, hi, big) {
     g.lineCap = 'round'; g.lineJoin = 'round';
     // legs (two poses for the walk cycle)
     g.strokeStyle = body; g.lineWidth = 3.2;
@@ -31,7 +31,12 @@
     g.globalAlpha = 1;
     // mandible
     g.strokeStyle = body; g.lineWidth = 3;
-    g.beginPath(); g.moveTo(74, 27); g.quadraticCurveTo(82, 30, 78, 33); g.stroke();
+    if (big) { // soldier: oversized head and long crossing jaws
+      ell(67, 21, 13, 11, 0, body);
+      g.lineWidth = 4.5;
+      g.beginPath(); g.moveTo(76, 24); g.quadraticCurveTo(93, 24, 90, 34); g.stroke();
+      g.beginPath(); g.moveTo(76, 29); g.quadraticCurveTo(90, 36, 82, 40); g.stroke();
+    } else { g.beginPath(); g.moveTo(74, 27); g.quadraticCurveTo(82, 30, 78, 33); g.stroke(); }
     // eye
     ell(71, 19, 2.8, 2.8, 0, '#ffffff');
     ell(72, 19, 1.5, 1.5, 0, '#000000');
@@ -50,6 +55,7 @@
     for (let f = 0; f < 2; f++) {
       mk(scene, 'ant' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#2a160e', '#7a4a30'));
       mk(scene, 'scout' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#9a4a0c', '#ffc46b'));
+      mk(scene, 'soldier' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#5a1410', '#c0503a', true));
     }
     mk(scene, 'crumb', 16, 16, (g) => {
       g.fillStyle = '#ffffff';
@@ -61,6 +67,13 @@
       g.beginPath(); g.moveTo(4, 6); g.lineTo(28, 6); g.lineTo(16, 26); g.closePath(); g.fill(); g.stroke();
     });
     mk(scene, 'ring', 64, 64, (g) => { g.strokeStyle = '#ffffff'; g.lineWidth = 5; g.beginPath(); g.arc(32, 32, 28, 0, Math.PI * 2); g.stroke(); });
+    mk(scene, 'grape', 64, 64, (g) => { // white so it can be tinted; a dimple shows it rolling
+      const gr = g.createRadialGradient(24, 22, 4, 32, 32, 31);
+      gr.addColorStop(0, '#ffffff'); gr.addColorStop(1, '#9a9a9a');
+      g.fillStyle = gr; g.beginPath(); g.arc(32, 32, 31, 0, Math.PI * 2); g.fill();
+      g.fillStyle = 'rgba(0,0,0,0.35)'; g.beginPath(); g.arc(32, 9, 3.5, 0, Math.PI * 2); g.fill();
+    });
+    mk(scene, 'shine', 32, 32, (g) => { g.fillStyle = 'rgba(255,255,255,0.55)'; g.beginPath(); g.ellipse(16, 16, 9, 5, -0.6, 0, Math.PI * 2); g.fill(); });
     mk(scene, 'gingham', 64, 64, (g) => {
       g.fillStyle = '#f4e7cf'; g.fillRect(0, 0, 64, 64);
       g.fillStyle = 'rgba(190,48,48,0.5)'; g.fillRect(0, 0, 32, 64); g.fillRect(0, 0, 64, 32);

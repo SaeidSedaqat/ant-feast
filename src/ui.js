@@ -4,14 +4,16 @@
   const cache = {};
   function set(el, key, html) { if (cache[key] !== html) { cache[key] = html; el.innerHTML = html; } }
   const fmtTime = (s) => { s = Math.floor(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
+  const IC = '<i class="ic"></i>';
+  const fmt = (n) => Math.floor(n).toLocaleString();
 
   AF.ui = {
     init(scene) {
       this.scene = scene;
       $('ver').textContent = 'v' + AF.config.version;
-      $('bJaws').onclick = () => scene.buy('jaws');
-      $('bTrail').onclick = () => scene.buy('trail');
-      $('bAnt').onclick = () => scene.buy('ant');
+      for (const k of ['jaws', 'trail', 'ant', 'soldier', 'speed', 'carry', 'bite']) {
+        $('b' + k[0].toUpperCase() + k.slice(1)).onclick = () => scene.buy(k);
+      }
       $('bMute').textContent = AF.audio.muted ? 'Sound off' : 'Sound on';
       $('bMute').onclick = () => { $('bMute').textContent = AF.audio.toggle() ? 'Sound off' : 'Sound on'; };
       $('bReset').onclick = () => { if (confirm('Start over? Your progress will be erased.')) scene.resetGame(); };
@@ -23,7 +25,7 @@
 
     // On-screen controls for phones: shown on touch screens only.
     initPad() {
-      AF.pad = AF.pad || { left: false, right: false, up: false, down: false, bite: false };
+      AF.pad = AF.pad || { left: false, right: false, bite: false };
       const pad = $('pad');
       const show = () => { if (this.touch) return; this.touch = true; pad.hidden = false; };
       this.touch = false;
@@ -46,26 +48,32 @@
       return window.innerHeight - r.top;
     },
 
+    // one shop button: title, detail line, price (null = maxed)
+    btn(id, show, title, detail, price, crumbs) {
+      const b = $(id);
+      b.hidden = !show;
+      if (!show) return;
+      set(b, id, `<b>${title}</b><span>${detail}${price == null ? ' · MAX' : ` · ${IC}${fmt(price)}`}</span>`);
+      b.disabled = price == null || crumbs < price;
+    },
+
     update(v) {
-      set($('crumbs'), 'c', `<i class="ic"></i>${Math.floor(v.crumbs).toLocaleString()}`);
-      set($('cake'), 'k', `Cake left <b>${v.cakePct}%</b>`);
-      set($('colony'), 'a', v.ants > 0 ? `${v.ants} ant${v.ants === 1 ? '' : 's'} on the trail` : '');
-      $('colony').hidden = v.ants === 0;
+      const p = v.prices, c = v.crumbs, tr = v.trails;
+      set($('crumbs'), 'c', `${IC}${fmt(c)}`);
+      set($('eaten'), 'e', `<span>Table eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
+      const parts = [];
+      if (v.ants) parts.push(`${v.ants} ant${v.ants === 1 ? '' : 's'}`);
+      if (v.soldiers) parts.push(`${v.soldiers} soldier${v.soldiers === 1 ? '' : 's'}`);
+      set($('colony'), 'a', parts.join(' · '));
+      $('colony').hidden = !parts.length;
 
-      const j = $('bJaws');
-      set(j, 'j', v.jawsMax ? `<b>Stronger Jaws</b><span>Lv ${v.jaws} · MAX</span>`
-        : `<b>Stronger Jaws</b><span>Lv ${v.jaws} → ${v.jaws + 1} · <i class="ic"></i>${v.jawsCost}</span>`);
-      j.disabled = v.jawsMax || v.crumbs < v.jawsCost;
-
-      const t = $('bTrail');
-      t.hidden = v.trail;
-      set(t, 't', `<b>Build Trail</b><span>nest → cake · <i class="ic"></i>${v.trailCost}</span>`);
-      t.disabled = v.crumbs < v.trailCost;
-
-      const a = $('bAnt');
-      a.hidden = !v.trail;
-      set(a, 'n', `<b>Hire Ant</b><span>${v.ants} working · <i class="ic"></i>${v.antCost}</span>`);
-      a.disabled = v.crumbs < v.antCost;
+      this.btn('bJaws', true, 'Stronger Jaws', `Lv ${v.jaws}`, p.jaws, c);
+      this.btn('bTrail', !!v.nextTrail, 'Build Trail', `nest → ${v.nextTrail || ''}`, p.trail, c);
+      this.btn('bAnt', tr.cake, 'Hire Ant', `${v.ants} working`, p.ant, c);
+      this.btn('bSoldier', tr.bread, 'Hire Soldier', `cracks crust · ${v.soldiers}`, p.soldier, c);
+      this.btn('bSpeed', tr.cake, 'Ant Speed', `Lv ${v.up.speed}`, p.speed, c);
+      this.btn('bCarry', tr.cake, 'Ant Carry', `Lv ${v.up.carry}`, p.carry, c);
+      this.btn('bBite', tr.cake, 'Ant Bite', `Lv ${v.up.bite}`, p.bite, c);
 
       set($('time'), 'time', fmtTime(v.time));
     },

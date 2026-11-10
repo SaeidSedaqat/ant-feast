@@ -18,6 +18,9 @@
       padding: max(8px, env(safe-area-inset-top)) max(10px, env(safe-area-inset-right)) max(8px, env(safe-area-inset-bottom)) max(10px, env(safe-area-inset-left)); box-sizing: border-box; }
     #top { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
     .pill { background: rgba(30, 16, 12, 0.62); border-radius: 999px; padding: 0.3em 0.8em; font-size: clamp(13px, 1.9vmin, 22px); white-space: nowrap; }
+    #eaten { display: flex; align-items: center; gap: 0.5em; }
+    #eaten .track { width: clamp(60px, 14vw, 160px); height: 0.6em; background: rgba(255,255,255,0.18); border-radius: 99px; overflow: hidden; }
+    #eaten .fillbar { display: block; height: 100%; background: linear-gradient(90deg, #ffcf6b, #ff8a4a); transition: width 0.3s; }
     #crumbs { font-size: clamp(17px, 2.8vmin, 32px); font-weight: 700; color: #ffe2a8; }
     #spacer { flex: 1; }
     .small { font-size: clamp(11px, 1.5vmin, 17px); opacity: 0.85; }
@@ -28,9 +31,9 @@
       animation: pulse 1.6s ease-in-out infinite; }
     @keyframes pulse { 50% { transform: scale(1.04); } }
     #fill { flex: 1; }
-    #bar { display: flex; flex-wrap: wrap; justify-content: center; gap: 8px; }
     button { pointer-events: auto; font: inherit; color: inherit; cursor: pointer; border: 0; }
-    #bar button { min-width: min(46vw, 230px); padding: 0.5em 1em; border-radius: 14px; font-size: clamp(14px, 2.2vmin, 26px);
+    #bar { display: grid; grid-template-columns: repeat(auto-fit, minmax(min(30vw, 150px), 1fr)); max-width: 980px; width: 100%; align-self: center; gap: 6px; }
+    #bar button { padding: 0.35em 0.5em; border-radius: 12px; font-size: clamp(12px, 1.9vmin, 20px);
       background: linear-gradient(#ffcf6b, #e8962e); color: #3b1d08; box-shadow: 0 4px 0 #8a4a10; display: flex; flex-direction: column; align-items: center; }
     #bar button span { font-size: 0.78em; opacity: 0.85; }
     #bar button:active:not(:disabled) { transform: translateY(3px); box-shadow: 0 1px 0 #8a4a10; }
@@ -56,7 +59,7 @@
   <div id="ui">
     <div id="top">
       <div class="pill" id="crumbs"></div>
-      <div class="pill" id="cake"></div>
+      <div class="pill" id="eaten"></div>
       <div class="pill" id="colony" hidden></div>
       <div id="spacer"></div>
       <div class="pill small" id="time"></div>
@@ -70,6 +73,10 @@
       <button id="bJaws"></button>
       <button id="bTrail"></button>
       <button id="bAnt" hidden></button>
+      <button id="bSoldier" hidden></button>
+      <button id="bSpeed" hidden></button>
+      <button id="bCarry" hidden></button>
+      <button id="bBite" hidden></button>
     </div>
     <div id="pad" hidden>
       <div class="grp"><button data-k="left" aria-label="Walk left">◀</button><button data-k="right" aria-label="Walk right">▶</button></div>
@@ -78,20 +85,20 @@
   </div>
   <div id="win" hidden>
     <div>
-      <h1>The cake is gone!</h1>
-      <p>Your colony cleared the plate in <b id="winTime"></b>.</p>
-      <p class="small">More dishes are coming in a later build.</p>
+      <h1>The table is clean!</h1>
+      <p>Your colony ate the whole feast in <b id="winTime"></b>.</p>
+      <p class="small">Cake, bread and grapes: all gone.</p>
       <button id="bAgain">Play again</button>
     </div>
   </div>
   <script src="lib/phaser-4.2.1.min.js"></script>
-  <script src="src/config.js?v=0.0.85"></script>
-  <script src="src/food.js?v=0.0.85"></script>
-  <script src="src/art.js?v=0.0.85"></script>
-  <script src="src/walker.js?v=0.0.85"></script>
-  <script src="src/support.js?v=0.0.85"></script>
-  <script src="src/ui.js?v=0.0.85"></script>
-  <script src="src/GameScene.js?v=0.0.85"></script>
-  <script src="src/main.js?v=0.0.85"></script>
+  <script src="src/config.js?v=0.0.95"></script>
+  <script src="src/food.js?v=0.0.95"></script>
+  <script src="src/art.js?v=0.0.95"></script>
+  <script src="src/walker.js?v=0.0.95"></script>
+  <script src="src/support.js?v=0.0.95"></script>
+  <script src="src/ui.js?v=0.0.95"></script>
+  <script src="src/GameScene.js?v=0.0.95"></script>
+  <script src="src/main.js?v=0.0.95"></script>
 </body>
 </html>
