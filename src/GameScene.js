@@ -137,7 +137,8 @@
       for (let k = 0; k < n; k++) {
         let best = -1;
         for (const c of cand) {
-          if (f.h[c] <= 0 || f.base + f.h[c] * f.cell > sc.h + 0.5) continue;
+          const top = f.base + f.h[c] * f.cell;
+          if (f.h[c] <= 0 || top > sc.h + 0.5 || top < sc.h - f.cell * 1.5) continue; // only the cake right under its jaws
           const side = (c - mid) * face;
           if (best < 0 || f.h[c] > f.h[best] || (f.h[c] === f.h[best] && side > (best - mid) * face)) best = c;
         }
