@@ -1,368 +1,251 @@
-// The feast table: several dishes the ants eat bit by bit.
-// GridDish (cake, bread): a 2D pile of cells. Ants eat the top cell of a column; the cells above a bitten
-// one fall down. h[c] is the skyline (highest solid cell + 1) that walking ants follow.
-// GrapeDish: a platter of grapes that roll away when nibbled and shrink as they are eaten.
-// Table: answers "how high is the food at x?" for every dish, so ants can walk over all of them.
+// The Giant Cake: a grid of cells eaten from the top of each column down through its layers.
+// Column c holds cells in rows 0 .. h[c]-1 (row 0 sits on the cake stand). Cells never shift, so the
+// whole cake state is one height per column (tiny to save).
 (function () {
-  const C = AF.config;
+  const C = AF.config, K = C.cake, cell = C.cell;
+  const KINDS = ['frosting', 'sponge', 'jam', 'chocolate', 'cream', 'biscuit', 'candle', 'sprinkle', 'item'];
+  const KI = {}; KINDS.forEach((k, i) => { KI[k] = i; });
+  const LAY = KINDS.map((k) => C.layers[k]);
+  const SPR = [[255, 92, 120], [90, 190, 255], [255, 226, 70], [120, 220, 120], [190, 120, 255], [255, 255, 255]];
+  const PX = 3; // canvas pixels per cell (nearest filtering keeps them crisp)
 
   function hash(a, b) {
     let h = (a * 374761393 + b * 668265263) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
-  const rgb = (c, k) => `rgb(${Math.min(255, Math.round(c[0] * k))},${Math.min(255, Math.round(c[1] * k))},${Math.min(255, Math.round(c[2] * k))})`;
   const toInt = (c) => (c[0] << 16) | (c[1] << 8) | c[2];
 
-  class GridDish {
-    constructor(scene, key, d, saved) {
-      this.key = key; this.def = d; this.name = d.name;
-      this.cell = C.cell; this.cols = d.cols; this.rows = d.rows;
-      this.x0 = d.x0; this.x1 = d.x0 + d.cols * this.cell;
-      this.base = d.plateH;
-      this.plateL = this.x0 - d.platePad; this.plateR = this.x1 + d.platePad;
-      this.full = this.shape();
+  class GiantCake {
+    constructor(scene, saved) {
+      this.scene = scene;
+      const cols = this.cols = K.cols, rows = this.rows = K.rows;
+      this.x0 = K.x0; this.x1 = K.x0 + cols * cell; this.base = K.stand;
+      this.plateL = this.x0 - K.standPad; this.plateR = this.x1 + K.standPad;
+      this.body = rows - K.candles.rows; // rows of cake body under the candles
+      this.full = new Uint16Array(cols);
+      this.h = new Uint16Array(cols);
+      this.dmg = new Float32Array(cols);
+      this.kind = new Uint8Array(cols * rows);
+      this.candleCols = [];
+      this.buildShape();
+      this.placeItems();
+      this.total = 0;
+      for (let c = 0; c < cols; c++) this.total += this.full[c];
+      this.restore(saved);
+      this.buildTiles();
+    }
 
-      const n = this.cols * this.rows;
-      // g: 1 = solid. o: the row the cell started on + 1 (its colour and hardness travel with it when it falls), 0 = empty.
-      this.g = new Uint8Array(n); this.o = new Uint8Array(n);
-      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.full[c]; r++) { this.g[r * this.cols + c] = 1; this.o[r * this.cols + c] = r + 1; }
-      if (saved && typeof saved === 'string' && saved.length === n) {
-        for (let i = 0; i < n; i++) {
-          const v = saved.charCodeAt(i) - 48;
-          if (v <= 0 || v > this.rows) { this.g[i] = 0; this.o[i] = 0; } else { this.g[i] = 1; this.o[i] = v; }
+    // ---------- shape ----------
+    bodyTop(c) {
+      const sh = K.shoulder, d = Math.min(c, this.cols - 1 - c);
+      if (d >= sh) return this.body;
+      const t = (sh - d) / sh;
+      return this.body - Math.round(sh * (1 - Math.sqrt(1 - t * t)));
+    }
+
+    buildShape() {
+      const cols = this.cols, rows = this.rows, b = K.bands, cd = K.candles;
+      for (let i = 0; i < cd.n; i++) {
+        const c0 = Math.round(((i + 1) * cols) / (cd.n + 1)) - 1;
+        for (let k = 0; k < cd.w; k++) this.candleCols.push(c0 + k);
+      }
+      for (let c = 0; c < cols; c++) {
+        const top = this.bodyTop(c);
+        const candle = this.candleCols.indexOf(c) >= 0;
+        this.full[c] = candle ? rows : top;
+        const side = c < K.coat || c >= cols - K.coat;
+        for (let r = 0; r < this.full[c]; r++) {
+          let k;
+          if (r >= top) k = KI.candle;
+          else if (r >= top - K.frosting || side) k = hash(c, r * 7 + 1) < K.sprinkle && r >= top - 3 ? KI.sprinkle : KI.frosting;
+          else if (r < b.biscuit) k = KI.biscuit;
+          else if (r < b.cream) k = KI.cream;
+          else if (r < b.chocolate) k = KI.chocolate;
+          else if (r < b.jam) k = KI.jam;
+          else k = KI.sponge;
+          this.kind[r * cols + c] = k;
         }
       }
-      this.h = new Array(this.cols);
-      for (let c = 0; c < this.cols; c++) { this.compact(c); this.retop(c); }
-      this.fall = new Map(); // column -> { row, off, v }: cells from `row` up are drawn `off` units above where they are
-      this.total = this.full.reduce((a, b) => a + b, 0);
-      this.left = 0;
-      for (let i = 0; i < n; i++) this.left += this.g[i];
-
-      this.px = 2; // canvas pixels per world unit
-      const cs = this.cell * this.px;
-      this.cs = cs;
-      const cv = document.createElement('canvas');
-      cv.width = this.cols * cs; cv.height = this.rows * cs;
-      this.ctx = cv.getContext('2d');
-      for (let c = 0; c < this.cols; c++) for (let r = 0; r < this.rows; r++) if (this.g[r * this.cols + c]) this.paint(c, r);
-      this.tex = scene.textures.addCanvas('dish-' + key, cv);
-      this.dirty = true;
-      this.img = scene.add.image(this.x0, -this.base, 'dish-' + key).setOrigin(0, 1).setScale(1 / this.px).setDepth(5);
     }
 
-    get center() { return (this.x0 + this.x1) / 2; }
-
-    // hardness of the cell that started at (c, r): ants need at least this bite strength
-    hard() { return 1; }
-
-    // Paint cell (c, r), drawn `dy` world units above its grid spot (while falling).
-    paint(c, r, dy) {
-      const or = this.o[r * this.cols + c] - 1;
-      const col = this.color(c, or);
-      const k = this.shade(c, or, col);
-      this.ctx.fillStyle = rgb(col, k);
-      this.ctx.fillRect(c * this.cs, Math.round((this.rows - 1 - r) * this.cs - (dy || 0) * this.px), this.cs, this.cs);
-    }
-    shade(c, or) { return 0.94 + hash(c, or) * 0.12; }
-
-    repaintCol(c) {
-      const fl = this.fall.get(c);
-      this.ctx.clearRect(c * this.cs, 0, this.cs, this.rows * this.cs);
-      for (let r = 0; r < this.h[c]; r++) this.paint(c, r, fl && r >= fl.row ? fl.off : 0);
-      this.dirty = true;
-    }
-
-    // Pack a column's cells down so there are no holes in it.
-    compact(c) {
-      let w = 0;
-      for (let r = 0; r < this.rows; r++) {
-        const i = r * this.cols + c;
-        if (!this.g[i]) continue;
-        if (w !== r) { const j = w * this.cols + c; this.g[j] = 1; this.o[j] = this.o[i]; this.g[i] = 0; this.o[i] = 0; }
-        w++;
+    // Hidden treats: 3x3 blocks at fixed (seeded) spots inside their layer.
+    placeItems() {
+      this.items = []; this.itemAt = new Map();
+      const b = K.bands, margin = K.shoulder + 30;
+      const band = { biscuit: [3, b.biscuit - 3], cream: [b.chocolate - 0, b.chocolate], sponge: [b.jam + 4, this.body - K.frosting - 6] };
+      band.cream = [b.biscuit + 4, b.cream - 4];
+      let seed = 11;
+      for (const key of Object.keys(C.items)) {
+        const it = C.items[key], rg = band[it.layer];
+        for (let i = 0; i < it.n; i++) {
+          seed++;
+          const span = this.cols - 2 * margin;
+          const c = Math.floor(margin + span * ((i + 0.2 + 0.6 * hash(seed, 3)) / it.n));
+          const r = Math.floor(rg[0] + (rg[1] - rg[0] - 3) * hash(seed, 9));
+          const idx = this.items.length;
+          this.items.push({ key, c, r, found: false });
+          for (let dc = 0; dc < 3; dc++) for (let dr = 0; dr < 3; dr++) {
+            if ((dc === 0 || dc === 2) && (dr === 0 || dr === 2)) continue; // rounded: a plus shape
+            const cc = c + dc, rr = r + dr;
+            this.kind[rr * this.cols + cc] = KI.item;
+            this.itemAt.set(rr * this.cols + cc, idx);
+          }
+        }
       }
     }
 
-    // Falling animation: the cells settle quickly with gravity.
-    update(dt) {
-      if (!this.fall.size) return;
-      const G = C.fallG;
-      for (const [c, fl] of this.fall) {
-        fl.v += G * dt; fl.off -= fl.v * dt;
-        if (fl.off <= 0) this.fall.delete(c);
-        this.repaintCol(c);
+    restore(s) {
+      this.h.set(this.full);
+      if (s && Array.isArray(s.h) && s.h.length === this.cols) {
+        for (let c = 0; c < this.cols; c++) this.h[c] = Math.max(0, Math.min(this.full[c], s.h[c] | 0));
+      }
+      if (s && Array.isArray(s.found)) for (const i of s.found) if (this.items[i]) this.items[i].found = true;
+      this.left = 0;
+      for (let c = 0; c < this.cols; c++) this.left += this.h[c];
+    }
+
+    encode() {
+      const found = [];
+      this.items.forEach((it, i) => { if (it.found) found.push(i); });
+      return { h: Array.from(this.h), found };
+    }
+
+    // ---------- queries ----------
+    colAt(x) { const c = Math.floor((x - this.x0) / cell); return c >= 0 && c < this.cols ? c : -1; }
+    colCenter(c) { return this.x0 + (c + 0.5) * cell; }
+    topH(c) { return this.base + this.h[c] * cell; }
+    surfaceAt(x) {
+      const c = this.colAt(x);
+      if (c >= 0) return this.base + this.h[c] * cell;
+      if (x >= this.plateL && x <= this.plateR) return this.base;
+      return 0;
+    }
+    // what an ant standing on column c sees: the layer of its top cell (null when the column is gone)
+    topKind(c) { return this.h[c] > 0 ? KINDS[this.kind[(this.h[c] - 1) * this.cols + c]] : null; }
+    layerOfRow(c, r) { return KINDS[this.kind[r * this.cols + c]]; }
+    isCandle(c) { return this.candleCols.indexOf(c) >= 0; }
+    // deepest layer name reached anywhere (for the HUD)
+    layerName(k) { return C.layers[k] ? C.layers[k].name : ''; }
+
+    // Eat from the top of column c. `work` is bite power; each cell needs its layer's hardness worth of
+    // work divided by eff(kind). Work left over on a cell carries to the next bite.
+    eat(c, work, maxN, eff) {
+      const res = { n: 0, value: 0, color: 0xe9b872, item: null, kind: null };
+      if (c < 0 || c >= this.cols) return res;
+      const cols = this.cols;
+      const oldH = this.h[c];
+      while (res.n < maxN && this.h[c] > 0) {
+        const r = this.h[c] - 1, k = this.kind[r * cols + c];
+        const need = LAY[k].hard / (eff ? eff(KINDS[k]) : 1);
+        if (this.dmg[c] + work < need) { this.dmg[c] += work; work = 0; break; }
+        work -= need - this.dmg[c]; this.dmg[c] = 0;
+        this.h[c]--; this.left--; res.n++; res.value += LAY[k].value; res.kind = KINDS[k];
+        res.color = toInt(this.cellRGB(c, r, false));
+        if (k === KI.item) {
+          const it = this.items[this.itemAt.get(r * cols + c)];
+          if (it && !it.found) { it.found = true; res.item = it; }
+        }
+      }
+      if (this.h[c] !== oldH) this.repaintTop(c, oldH);
+      res.work = work;
+      return res;
+    }
+
+    // dev: cut every column down to `row`
+    cutTo(row) {
+      for (let c = 0; c < this.cols; c++) if (this.h[c] > row) { const o = this.h[c]; this.left -= o - row; this.h[c] = row; this.repaintTop(c, o); }
+    }
+
+    // ---------- drawing ----------
+    cellRGB(c, r, top) {
+      const k = this.kind[r * this.cols + c];
+      let col = LAY[k].color, m = 0.9 + 0.14 * hash(c, r);
+      if (k === KI.sprinkle) { col = SPR[Math.floor(hash(r, c) * SPR.length)]; m = 1; }
+      else if (k === KI.item) { const it = this.items[this.itemAt.get(r * this.cols + c)]; col = C.items[it.key].color; m = 0.95 + 0.1 * hash(c, r); }
+      else if (k === KI.candle) {
+        const fromTop = this.full[c] - 1 - r;
+        if (fromTop < 3) col = fromTop === 2 ? [60, 40, 30] : fromTop === 1 ? [255, 150, 40] : [255, 236, 120];
+        else col = ((r + c) >> 2) & 1 ? col : [250, 250, 255];
+        m = 1;
+      }
+      if (top) m *= 1.13;
+      return [Math.min(255, col[0] * m) | 0, Math.min(255, col[1] * m) | 0, Math.min(255, col[2] * m) | 0];
+    }
+
+    buildTiles() {
+      const tc = K.tile, tr = K.tileRows;
+      this.tw = Math.ceil(this.cols / tc); this.th = Math.ceil(this.rows / tr);
+      this.tiles = []; this.dirty = new Set();
+      const sc = this.scene;
+      for (let ty = 0; ty < this.th; ty++) for (let tx = 0; tx < this.tw; tx++) {
+        const key = `cake_${tx}_${ty}`;
+        if (sc.textures.exists(key)) sc.textures.remove(key);
+        const cv = document.createElement('canvas'); cv.width = tc * PX; cv.height = tr * PX;
+        const ctx = cv.getContext('2d');
+        const tex = sc.textures.addCanvas(key, cv);
+        if (tex.setFilter) tex.setFilter(Phaser.Textures.FilterMode.NEAREST);
+        const img = sc.add.image(this.x0 + tx * tc * cell, -(this.base + ty * tr * cell), key)
+          .setOrigin(0, 1).setScale(cell / PX).setDepth(5);
+        const t = { tx, ty, cv, ctx, tex, img };
+        this.tiles.push(t);
+        this.paintTile(t);
+      }
+    }
+
+    tileOf(c, r) { return this.tiles[Math.floor(r / K.tileRows) * this.tw + Math.floor(c / K.tile)]; }
+
+    paintTile(t) {
+      const tc = K.tile, tr = K.tileRows, W = tc * PX, H = tr * PX;
+      const im = t.ctx.createImageData(W, H), d = im.data;
+      for (let lc = 0; lc < tc; lc++) {
+        const c = t.tx * tc + lc; if (c >= this.cols) break;
+        const hc = this.h[c];
+        for (let lr = 0; lr < tr; lr++) {
+          const r = t.ty * tr + lr; if (r >= hc) break;
+          const rgb = this.cellRGB(c, r, r === hc - 1);
+          const py = (tr - 1 - lr) * PX, px = lc * PX;
+          for (let yy = 0; yy < PX; yy++) for (let xx = 0; xx < PX; xx++) {
+            const o = ((py + yy) * W + px + xx) * 4;
+            d[o] = rgb[0]; d[o + 1] = rgb[1]; d[o + 2] = rgb[2]; d[o + 3] = 255;
+          }
+        }
+      }
+      t.ctx.putImageData(im, 0, 0);
+      t.tex.refresh();
+    }
+
+    // column c went from oldH cells down to h[c]: clear the eaten cells, light up the new top cell
+    repaintTop(c, oldH) {
+      const tr = K.tileRows, nh = this.h[c];
+      for (let r = nh; r < oldH; r++) {
+        const t = this.tileOf(c, r);
+        t.ctx.clearRect((c - t.tx * K.tile) * PX, (tr - 1 - (r - t.ty * tr)) * PX, PX, PX);
+        this.dirty.add(t);
+      }
+      if (nh > 0) {
+        const r = nh - 1, t = this.tileOf(c, r), rgb = this.cellRGB(c, r, true);
+        t.ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
+        t.ctx.fillRect((c - t.tx * K.tile) * PX, (tr - 1 - (r - t.ty * tr)) * PX, PX, PX);
+        this.dirty.add(t);
       }
     }
 
     flush() {
-      if (this.dirty) { this.tex.refresh(); this.dirty = false; }
+      if (!this.dirty.size) return;
+      for (const t of this.dirty) t.tex.refresh();
+      this.dirty.clear();
     }
 
-    // ---------- grid lookups ----------
-    colAt(x) {
-      if (x < this.x0 || x >= this.x1) return -1;
-      return Math.floor((x - this.x0) / this.cell);
-    }
-    colCenter(c) { return this.x0 + (c + 0.5) * this.cell; }
-    topH(c) { return this.base + this.h[c] * this.cell; }
-
-    retop(c) {
-      let r = this.rows - 1;
-      while (r >= 0 && !this.g[r * this.cols + c]) r--;
-      this.h[c] = r + 1;
-    }
-
-    surfaceAt(x) {
-      const c = this.colAt(x);
-      if (c >= 0) return this.base + this.h[c] * this.cell;
-      if (x >= this.plateL && x <= this.plateR) return this.base;
-      return 0;
-    }
-
-    // hardness of the top cell of column c (0 = column empty)
-    topHard(c) {
-      if (c < 0 || c >= this.cols || this.h[c] <= 0) return 0;
-      return this.hard(c, this.o[(this.h[c] - 1) * this.cols + c] - 1);
-    }
-    edible(c, str) { const t = this.topHard(c); return t > 0 && t <= str; }
-
-    // first column with food, seen from the side the trail arrives on (dir +1: from the left)
-    headCol(dir) {
-      if (dir < 0) { for (let i = this.cols - 1; i >= 0; i--) if (this.h[i] > 0) return i; return -1; }
-      for (let i = 0; i < this.cols; i++) if (this.h[i] > 0) return i;
-      return -1;
-    }
-
-    // Eat cell (c, r). Everything above it in the column drops down one cell.
-    remove(c, r) {
-      const cols = this.cols, color = toInt(this.color(c, this.o[r * cols + c] - 1));
-      for (let rr = r; rr < this.rows - 1; rr++) {
-        const i = rr * cols + c, j = i + cols;
-        this.g[i] = this.g[j]; this.o[i] = this.o[j];
-      }
-      const t = (this.rows - 1) * cols + c; this.g[t] = 0; this.o[t] = 0;
-      this.left--;
-      this.retop(c);
-      if (this.h[c] > r) { // the part above falls
-        const fl = this.fall.get(c);
-        if (fl) { fl.row = Math.min(fl.row, r); fl.off = Math.min(fl.off + this.cell, this.cell * 3); }
-        else this.fall.set(c, { row: r, off: this.cell, v: 0 });
-      }
-      this.repaintCol(c);
-      return color;
-    }
-
-    // Bite the top of column c: up to n cells, as long as they are not too hard for `str`.
-    eat(c, n, str) {
-      let eaten = 0, color = 0xe9b872;
-      while (eaten < n && this.edible(c, str)) { color = this.remove(c, this.h[c] - 1); eaten++; }
-      return { n: eaten, color };
-    }
-
-    encode() {
-      const parts = [];
-      for (let i = 0; i < this.o.length; i += 1024) parts.push(String.fromCharCode.apply(null, Array.from(this.o.subarray(i, i + 1024), (v) => 48 + v)));
-      return parts.join('');
-    }
-
-    drawPlate(g) {
-      const w = this.plateR - this.plateL, hgt = this.base;
-      g.fillStyle(this.def.plate, 1).fillRoundedRect(this.plateL, -hgt, w, hgt, Math.min(1.4, hgt / 2));
-      g.fillStyle(0xffffff, 0.6).fillRect(this.plateL + 2, -hgt, w - 4, 1.2);
+    drawStand(g) {
+      const w = this.plateR - this.plateL;
+      g.fillStyle(0x8a6a8c, 0.35).fillEllipse((this.plateL + this.plateR) / 2, -1, w + 20, 6);
+      g.fillStyle(0xe6e9f0, 1).fillRoundedRect(this.plateL, -this.base, w, this.base, 3);
+      g.fillStyle(0xffffff, 0.7).fillRect(this.plateL + 4, -this.base + 1, w - 8, 1.2);
+      g.fillStyle(0xb8bcc8, 1).fillRect(this.plateL + 6, -1.5, w - 12, 1.5);
     }
   }
 
-  // ---------- the cake: sponge, cream and jam layers, frosting, sprinkles, a cherry ----------
-  const SPONGE = [233, 184, 114], CREAM = [255, 243, 224], JAM = [178, 34, 56];
-  const FROST = [246, 182, 202], CHERRY = [196, 24, 44];
-  const SPRINKLES = [[90, 160, 230], [250, 214, 80], [120, 200, 120], [255, 255, 255]];
-
-  class Cake extends GridDish {
-    shape() {
-      const d = this.def, out = new Array(this.cols), r = 7;
-      this.body = d.rows - d.cherryRows;
-      const body = this.body, cx = (this.cols - 1) / 2, cr = 3.4;
-      for (let i = 0; i < this.cols; i++) {
-        const e = Math.min(i, this.cols - 1 - i);
-        let h = body;
-        if (e < r) { const dx = r - e - 0.5; h = body - Math.round(r - Math.sqrt(Math.max(0, r * r - dx * dx))); }
-        const dd = Math.abs(i - cx);
-        if (dd < cr) h = body + Math.min(this.rows - body, Math.round(Math.sqrt(cr * cr - dd * dd) * 1.75));
-        out[i] = h;
-      }
-      return out;
-    }
-    color(c, r) {
-      if (r >= this.body) return CHERRY;
-      const top = Math.min(this.full[c], this.body);
-      const drip = hash(c, 7) < 0.35 ? 1 + Math.floor(hash(c, 9) * 4) : 0;
-      const edge = Math.min(c, this.cols - 1 - c);
-      if (r >= top - 3 - drip || edge === 0) {
-        if (hash(c, r + 1000) < 0.07) return SPRINKLES[Math.floor(hash(r, c) * SPRINKLES.length)];
-        return FROST;
-      }
-      const band = r % 13;
-      if (band === 10 || band === 11) return CREAM;
-      if (band === 12) return JAM;
-      return SPONGE;
-    }
-    shade(c, or, col) {
-      let k = 0.94 + hash(c, or) * 0.12;
-      if (col === CHERRY && c < (this.cols - 1) / 2 && or > this.body + 2) k *= 1.25;
-      return k;
-    }
-  }
-
-  // ---------- the bread: a soft crumb inside a hard crust ----------
-  const CRUST = [178, 106, 46], CRUST_TOP = [150, 82, 34], CRUMB = [246, 230, 196], HOLE = [222, 198, 152];
-
-  class Bread extends GridDish {
-    shape() {
-      const out = new Array(this.cols), r = 7, n = this.cols;
-      for (let i = 0; i < n; i++) {
-        const t = (i + 0.5) / n * 2 - 1;
-        let h = Math.round(17 + 12 * Math.sqrt(Math.max(0, 1 - t * t * 0.85)));
-        const e = Math.min(i, n - 1 - i);
-        if (e < r) { const dx = r - e - 0.5; h -= Math.round(r - Math.sqrt(Math.max(0, r * r - dx * dx))); }
-        out[i] = Math.min(this.rows, h);
-      }
-      return out;
-    }
-    isCrust(c, r) {
-      const e = Math.min(c, this.cols - 1 - c);
-      return r >= this.full[c] - this.def.crustRows || e < 2 || r === 0;
-    }
-    hard(c, r) { return this.isCrust(c, r) && r > 0 ? this.def.crust : 1; }
-    color(c, r) {
-      if (this.isCrust(c, r)) return r >= this.full[c] - 1 ? CRUST_TOP : CRUST;
-      return hash(c * 3, r * 5) < 0.12 ? HOLE : CRUMB;
-    }
-  }
-
-  // ---------- the grapes: round, they roll away when nibbled ----------
-  class GrapeDish {
-    constructor(scene, key, d, saved) {
-      this.key = key; this.def = d; this.name = d.name;
-      this.x0 = d.x0; this.x1 = d.x1; this.base = d.plateH; this.rim = d.rim;
-      this.plateL = this.x0 - 8; this.plateR = this.x1 + 8;
-      this.total = d.n * d.hp;
-      this.grapes = [];
-      const span = (this.x1 - this.x0) / d.n;
-      const colors = [0x7d3a8c, 0x9ac24a, 0x6a2c78, 0x8fb840, 0x8a4398, 0xa4c858, 0x74358a];
-      for (let i = 0; i < d.n; i++) {
-        const s = Array.isArray(saved) && saved[i] ? saved[i] : null;
-        const gr = {
-          x: s && isFinite(s.x) ? Phaser.Math.Clamp(+s.x, this.x0, this.x1) : this.x0 + span * (i + 0.5),
-          hp: s ? Math.max(0, Math.min(d.hp, s.hp | 0)) : d.hp,
-          v: 0, ang: hash(i, 3) * 6.28, color: colors[i % colors.length], ants: 0,
-        };
-        gr.spr = scene.add.image(gr.x, 0, 'grape').setTint(gr.color).setDepth(5);
-        gr.shine = scene.add.image(gr.x, 0, 'shine').setDepth(5.1);
-        this.grapes.push(gr);
-      }
-      this.left = this.grapes.reduce((a, g) => a + g.hp, 0);
-      this.update(0);
-    }
-
-    get center() { return (this.x0 + this.x1) / 2; }
-    rad(g) { return g.hp > 0 ? this.def.r * Math.max(0.3, Math.sqrt(g.hp / this.def.hp)) : 0; }
-
-    surfaceAt(x) {
-      if (x < this.plateL || x > this.plateR) return 0;
-      if (x < this.x0 || x > this.x1) return this.base + this.rim; // the platter's raised rim
-      let s = this.base;
-      for (const g of this.grapes) {
-        if (g.hp <= 0) continue;
-        const r = this.rad(g), dx = x - g.x;
-        if (dx > -r && dx < r) s = Math.max(s, this.base + r + Math.sqrt(r * r - dx * dx));
-      }
-      return s;
-    }
-
-    // Roll: friction slows them, they bounce off the rim and each other.
-    update(dt) {
-      const d = this.def, alive = this.grapes.filter((g) => g.hp > 0);
-      for (const g of alive) {
-        const sp = Math.abs(g.v);
-        if (sp > 0) { const nv = Math.max(0, sp - d.friction * dt); g.v = Math.sign(g.v) * nv; }
-        g.x += g.v * dt;
-        g.ang += (g.v * dt) / Math.max(1, this.rad(g));
-        const r = this.rad(g);
-        if (g.x - r < this.x0) { g.x = this.x0 + r; g.v = Math.abs(g.v) * 0.5; }
-        if (g.x + r > this.x1) { g.x = this.x1 - r; g.v = -Math.abs(g.v) * 0.5; }
-      }
-      alive.sort((a, b) => a.x - b.x);
-      for (let i = 0; i + 1 < alive.length; i++) {
-        const a = alive[i], b = alive[i + 1], gap = this.rad(a) + this.rad(b) - (b.x - a.x);
-        if (gap > 0) {
-          a.x -= gap / 2; b.x += gap / 2;
-          if (a.v > b.v) { const t = a.v; a.v = b.v * 0.8; b.v = t * 0.8; }
-        }
-      }
-      for (const g of this.grapes) {
-        if (g.hp <= 0) { g.spr.setVisible(false); g.shine.setVisible(false); continue; }
-        const r = this.rad(g), y = -(this.base + r);
-        g.spr.setPosition(g.x, y).setScale(r / 31).setRotation(g.ang);
-        g.shine.setPosition(g.x - r * 0.3, y - r * 0.35).setScale(r / 20);
-      }
-    }
-    flush() {}
-
-    // Nibble grape g: up to n bites; it rolls away from the biter (pushDir).
-    bite(g, n, pushDir) {
-      const k = Math.min(n, g.hp);
-      if (k <= 0) return { n: 0, color: g.color };
-      g.hp -= k; this.left -= k;
-      const r = this.rad(g) || 1;
-      g.v += pushDir * this.def.push * (this.def.r / (r + this.def.r));
-      return { n: k, color: g.color };
-    }
-
-    // the grape whose side or top is within `reach` of an ant at (x, h)
-    grapeNear(x, h, reach) {
-      let best = null, bd = Infinity;
-      for (const g of this.grapes) {
-        if (g.hp <= 0) continue;
-        const r = this.rad(g), d = Math.abs(x - g.x) - r;
-        if (d <= reach && h <= this.base + 2 * r + 1 && d < bd) { bd = d; best = g; }
-      }
-      return best;
-    }
-
-    encode() { return this.grapes.map((g) => ({ x: Math.round(g.x * 10) / 10, hp: g.hp })); }
-
-    drawPlate(g) {
-      const hgt = this.base;
-      g.fillStyle(this.def.plate, 1).fillRoundedRect(this.plateL, -hgt, this.plateR - this.plateL, hgt, 1.4);
-      g.fillStyle(this.def.plate, 1).fillRoundedRect(this.plateL, -hgt - this.rim, 8, this.rim + 1, 2)
-        .fillRoundedRect(this.x1, -hgt - this.rim, 8, this.rim + 1, 2);
-      g.fillStyle(0xffffff, 0.6).fillRect(this.plateL + 2, -hgt, this.plateR - this.plateL - 4, 1.2);
-    }
-  }
-
-  const KINDS = { cake: Cake, bread: Bread, grapes: GrapeDish };
-
-  class Table {
-    constructor(scene, saved) {
-      saved = saved || {};
-      this.dishes = {};
-      this.list = [];
-      for (const key of C.dishOrder) {
-        const d = new KINDS[key](scene, key, C.dishes[key], saved[key]);
-        d.dir = Math.sign(d.center - C.world.nestX);
-        this.dishes[key] = d; this.list.push(d);
-      }
-      this.total = this.list.reduce((a, d) => a + d.total, 0);
-    }
-    get left() { return this.list.reduce((a, d) => a + d.left, 0); }
-    dishAt(x) { for (const d of this.list) if (x >= d.plateL && x <= d.plateR) return d; return null; }
-    surfaceAt(x) { const d = this.dishAt(x); return d ? d.surfaceAt(x) : 0; }
-    update(dt) { for (const d of this.list) d.update(dt); }
-    flush() { for (const d of this.list) d.flush(); }
-    encode() { const o = {}; for (const d of this.list) o[d.key] = d.encode(); return o; }
-  }
-
-  AF.Table = Table;
+  GiantCake.KINDS = KINDS;
+  AF.GiantCake = GiantCake;
 })();

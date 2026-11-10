@@ -1,31 +1,61 @@
-// HTML overlay for the HUD and shop buttons (crisp text at any size, easy portrait/landscape layout).
+// HTML overlay: HUD, the upgrade side panel (tabs), pop-up toasts, phone pad and the ?dev=1 panel.
 (function () {
   const $ = (id) => document.getElementById(id);
   const cache = {};
   function set(el, key, html) { if (cache[key] !== html) { cache[key] = html; el.innerHTML = html; } }
   const fmtTime = (s) => { s = Math.floor(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
   const IC = '<i class="ic"></i>';
-  const fmt = (n) => Math.floor(n).toLocaleString();
+  const fmt = (n) => {
+    n = Math.floor(n);
+    if (n >= 1e9) return (n / 1e9).toFixed(n >= 1e10 ? 0 : 1) + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(n >= 1e7 ? 0 : 1) + 'M';
+    if (n >= 1e5) return Math.floor(n / 1e3) + 'K';
+    return n.toLocaleString();
+  };
+  const TABS = ['scout', 'ants', 'colony', 'tools'];
 
+  AF.fmt = fmt;
   AF.ui = {
     init(scene) {
       this.scene = scene;
+      this.rows = {};
       $('ver').textContent = 'v' + AF.config.version;
-      for (const k of ['jaws', 'trail', 'ant', 'soldier', 'speed', 'carry', 'bite']) {
-        $('b' + k[0].toUpperCase() + k.slice(1)).onclick = () => scene.buy(k);
-      }
       $('bMute').textContent = AF.audio.muted ? 'Sound off' : 'Sound on';
       $('bMute').onclick = () => { $('bMute').textContent = AF.audio.toggle() ? 'Sound off' : 'Sound on'; };
       $('bReset').onclick = () => { if (confirm('Start over? Your progress will be erased.')) scene.resetGame(); };
       $('bAgain').onclick = () => scene.resetGame();
+      $('bKeep').onclick = () => { $('win').hidden = true; this.keepGoing = true; };
+      $('bZin').onclick = () => scene.zoomBy(1.25);
+      $('bZout').onclick = () => scene.zoomBy(0.8);
+      $('bPanel').onclick = () => this.openPanel(!this.panelOpen);
+      TABS.forEach((t) => { $('t_' + t).onclick = () => this.tab(t); });
+      this.tab('scout');
+      this.openPanel(window.innerWidth >= 900 && !(window.matchMedia && matchMedia('(pointer: coarse)').matches));
       // keep keyboard focus off buttons so Space bites instead of re-clicking
-      document.querySelectorAll('#ui button').forEach((b) => b.addEventListener('mouseup', () => b.blur()));
+      document.addEventListener('mouseup', (e) => { if (e.target.closest && e.target.closest('button')) setTimeout(() => document.activeElement && document.activeElement.blur && document.activeElement.blur(), 0); });
       this.initPad();
+      if (new URLSearchParams(location.search).get('dev') === '1') this.initDev(scene);
+    },
+
+    openPanel(on) {
+      this.panelOpen = on;
+      $('side').hidden = !on;
+      $('bPanel').classList.toggle('on', on);
+    },
+    tab(t) {
+      this.cur = t;
+      TABS.forEach((k) => { $('t_' + k).classList.toggle('on', k === t); $('p_' + k).hidden = k !== t; });
+    },
+    // css px of the screen's right side covered by the panel (the camera shifts the view left of it)
+    panelWidth() {
+      if (!this.panelOpen) return 0;
+      const r = $('side').getBoundingClientRect();
+      return r.width > window.innerWidth * 0.6 ? 0 : r.width + 8;
     },
 
     // On-screen controls for phones: shown on touch screens only.
     initPad() {
-      AF.pad = AF.pad || { left: false, right: false, bite: false };
+      AF.pad = AF.pad || {};
       const pad = $('pad');
       const show = () => { if (this.touch) return; this.touch = true; pad.hidden = false; };
       this.touch = false;
@@ -43,39 +73,66 @@
       });
     },
 
-    barHeight() {
-      const r = $('bar').getBoundingClientRect();
-      return window.innerHeight - r.top;
+    initDev(scene) {
+      const d = $('dev'); d.hidden = false;
+      const L = AF.config.cake;
+      const items = [
+        ['1×', () => scene.dev('speed', 1)], ['5×', () => scene.dev('speed', 5)], ['20×', () => scene.dev('speed', 20)],
+        ['+1K', () => scene.dev('crumbs', 1e3)], ['+100K', () => scene.dev('crumbs', 1e5)], ['+10M', () => scene.dev('crumbs', 1e7)],
+        ['Sponge', () => scene.dev('layer', L.rows - L.candles.rows - L.frosting)], ['Jam', () => scene.dev('layer', L.bands.jam)],
+        ['Choc', () => scene.dev('layer', L.bands.chocolate)], ['Cream', () => scene.dev('layer', L.bands.cream)],
+        ['Biscuit', () => scene.dev('layer', L.bands.biscuit)], ['Almost', () => scene.dev('layer', 1)],
+        ['Unlock', () => scene.dev('unlock')], ['Sniff', () => scene.dev('sniff')],
+      ];
+      d.innerHTML = '<b>DEV</b>';
+      for (const [t, f] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = f; d.appendChild(b); }
     },
 
-    // one shop button: title, detail line, price (null = maxed)
-    btn(id, show, title, detail, price, crumbs) {
-      const b = $(id);
-      b.hidden = !show;
-      if (!show) return;
-      set(b, id, `<b>${title}</b><span>${detail}${price == null ? ' · MAX' : ` · ${IC}${fmt(price)}`}</span>`);
-      b.disabled = price == null || crumbs < price;
+    // height (css px) taken by the phone pad at the bottom
+    barHeight() {
+      const p = $('pad');
+      if (p.hidden) return 0;
+      return window.innerHeight - p.getBoundingClientRect().top;
+    },
+
+    // rows: {tab, id, head} | {tab, id, title, desc, lv, price (null = max), block (text), show}
+    renderRows(rows, crumbs) {
+      const can = {};
+      for (const r of rows) {
+        let el = this.rows[r.id];
+        if (!el) {
+          el = document.createElement(r.head ? 'div' : 'button');
+          el.className = r.head ? 'hd' : 'up';
+          if (!r.head) el.onclick = () => this.scene.buy(r.id);
+          $('p_' + r.tab).appendChild(el);
+          this.rows[r.id] = el;
+        }
+        el.hidden = r.show === false;
+        if (el.hidden) continue;
+        if (r.head) { set(el, r.id, r.head); continue; }
+        const right = r.block ? `<span class="pr no">${r.block}</span>` : r.price == null ? '<span class="pr no">MAX</span>' : `<span class="pr">${IC}${fmt(r.price)}</span>`;
+        set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em><small>${r.desc}</small></span>${right}`);
+        const off = !!r.block || r.price == null || crumbs < r.price;
+        el.disabled = off;
+        if (!off) can[r.tab] = (can[r.tab] || 0) + 1;
+      }
+      for (const t of TABS) set($('t_' + t),'tb' + t, `${t[0].toUpperCase() + t.slice(1)}${can[t] ? ` <i class="n">${can[t]}</i>` : ''}`);
+      const any = TABS.reduce((s, t) => s + (can[t] || 0), 0);
+      set($('bPanel'), 'bp', `Upgrades${any ? ` <i class="n">${any}</i>` : ''}`);
     },
 
     update(v) {
-      const p = v.prices, c = v.crumbs, tr = v.trails;
-      set($('crumbs'), 'c', `${IC}${fmt(c)}`);
-      set($('eaten'), 'e', `<span>Table eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
-      const parts = [];
-      if (v.ants) parts.push(`${v.ants} ant${v.ants === 1 ? '' : 's'}`);
-      if (v.soldiers) parts.push(`${v.soldiers} soldier${v.soldiers === 1 ? '' : 's'}`);
-      set($('colony'), 'a', parts.join(' · '));
-      $('colony').hidden = !parts.length;
-
-      this.btn('bJaws', true, 'Stronger Jaws', `Lv ${v.jaws}`, p.jaws, c);
-      this.btn('bTrail', !!v.nextTrail, 'Build Trail', `nest → ${v.nextTrail || ''}`, p.trail, c);
-      this.btn('bAnt', tr.cake, 'Hire Ant', `${v.ants} working`, p.ant, c);
-      this.btn('bSoldier', tr.bread, 'Hire Soldier', `cracks crust · ${v.soldiers}`, p.soldier, c);
-      this.btn('bSpeed', tr.cake, 'Ant Speed', `Lv ${v.up.speed}`, p.speed, c);
-      this.btn('bCarry', tr.cake, 'Ant Carry', `Lv ${v.up.carry}`, p.carry, c);
-      this.btn('bBite', tr.cake, 'Ant Bite', `Lv ${v.up.bite}`, p.bite, c);
-
+      set($('crumbs'), 'c', `${IC}${fmt(v.crumbs)}`);
+      set($('eaten'), 'e', `<span>Cake eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
+      set($('colony'), 'a', v.colony);
+      $('colony').hidden = !v.colony;
+      set($('layer'), 'l', v.layer);
+      $('layer').hidden = !v.layer;
+      set($('boosts'), 'b', v.boosts);
+      $('boosts').hidden = !v.boosts;
       set($('time'), 'time', fmtTime(v.time));
+      this.renderRows(v.rows, v.crumbs);
+      for (const k of ['up', 'chomp', 'rally']) { const b = document.querySelector(`#pad [data-k="${k}"]`); if (b) b.hidden = !v.pad[k]; }
     },
 
     hint(text) {
@@ -83,6 +140,17 @@
       if (!text) { h.hidden = true; return; }
       h.hidden = false;
       set(h, 'h', text);
+    },
+
+    // pop-up message that fades away
+    toast(html, gold) {
+      const box = $('toasts'), el = document.createElement('div');
+      el.className = 'toast' + (gold ? ' gold' : '');
+      el.innerHTML = html;
+      box.appendChild(el);
+      while (box.children.length > 4) box.firstChild.remove();
+      setTimeout(() => el.classList.add('out'), 3600);
+      setTimeout(() => el.remove(), 4100);
     },
 
     showWin(time) {

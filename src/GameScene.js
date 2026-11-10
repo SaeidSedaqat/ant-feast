@@ -1,60 +1,58 @@
-// The game loop: scout control, biting, carrying, nest deposits, upgrades, trail ants and soldiers, camera.
+// The game: the scout (player), the Giant Cake, the colony's ants (instinct jobs, pheromone flags, squads),
+// upgrades, autosave and the ?dev=1 tools.
 (function () {
-  const C = AF.config, K = C.costs;
-  const jawsCost = (lvl) => Math.round(K.jawsBase * Math.pow(K.jawsGrowth, lvl - 1));
-  const antCost = (n) => Math.round(K.antBase * Math.pow(K.antGrowth, n));
-  const soldierCost = (n) => Math.round(K.soldierBase * Math.pow(K.soldierGrowth, n));
-  const upCost = (k, lvl) => Math.round(K[k].base * Math.pow(K[k].growth, lvl - 1));
-  const UPS = ['speed', 'carry', 'bite'];
+  const C = AF.config;
+  const TYPES = ['worker', 'strong', 'flying', 'squad'];
+  const HARD = { chocolate: 1, biscuit: 1 };
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const cap1 = (s) => s[0].toUpperCase() + s.slice(1);
+
+  // how well each ant type handles each layer (multiplies bite work)
+  function effOf(type) {
+    if (type === 'strong') return (k) => (HARD[k] ? 3 : 1);
+    if (type === 'flying') return (k) => (k === 'frosting' || k === 'sprinkle' || k === 'candle' ? 2 : HARD[k] ? 0.5 : 1);
+    if (type === 'squad') return (k) => (HARD[k] ? 1.5 : 1);
+    return (k) => (HARD[k] ? 0.5 : k === 'candle' ? 0.7 : 1);
+  }
+  const EFF = {}; TYPES.forEach((t) => { EFF[t] = effOf(t); });
 
   class GameScene extends Phaser.Scene {
     constructor() { super('game'); }
 
     create() {
       const s = AF.save.load() || {};
-      const tr = s.trails || {}, up = s.up || {};
-      this.st = {
-        crumbs: Math.max(0, +s.crumbs || 0),
-        jaws: Math.min(K.jawsMax, Math.max(1, s.jaws | 0)),
-        trails: { cake: !!tr.cake, bread: !!tr.bread, grapes: !!tr.grapes },
-        up: {},
-        time: +s.time || 0,
-        won: !!s.won,
-        hint: s.hint | 0,
-      };
-      for (const k of UPS) this.st.up[k] = Math.min(K[k].max, Math.max(1, up[k] | 0));
-
+      this.st = this.freshState(s);
       AF.makeTextures(this);
       this.buildScenery();
-      this.table = new AF.Table(this, s.dishes);
-      const plates = this.add.graphics().setDepth(4);
-      for (const d of this.table.list) d.drawPlate(plates);
 
-      const sx = typeof s.scoutX === 'number' && isFinite(s.scoutX) ? Phaser.Math.Clamp(s.scoutX, C.world.left, C.world.right) : 30;
-      const sc = this.scout = new AF.Walker(this, this.table, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20, foot: 3.5 });
-      sc.load = Math.max(0, s.scoutLoad | 0);
-      sc.capacity = this.scoutCap();
-      if (typeof s.scoutH === 'number' && isFinite(s.scoutH)) sc.h = Math.max(this.table.surfaceAt(sc.x), s.scoutH);
+      const cake = this.cake = new AF.GiantCake(this, s.cake);
+      cake.drawStand(this.add.graphics().setDepth(4));
+
+      const sx = typeof s.scoutX === 'number' && isFinite(s.scoutX) ? clamp(s.scoutX, C.world.left, C.world.right) : 40;
+      const sc = this.scout = new AF.Walker(this, cake, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20, foot: 3.5 });
+      sc.load = Math.max(0, s.scoutLoad | 0); sc.loadVal = Math.max(0, +s.scoutVal || sc.load);
+      if (typeof s.scoutH === 'number' && isFinite(s.scoutH)) sc.h = clamp(s.scoutH, cake.surfaceAt(sc.x), C.world.ceiling);
+      sc.air = sc.h > sc.S(sc.x) + 0.5; sc.vy = 0;
       this.marker = this.add.image(0, 0, 'marker').setDepth(21);
-      this.biteT = 0; this.biteWas = false; this.hardT = 0;
+      this.scentArrow = this.add.image(0, 0, 'marker').setDepth(21).setTint(0x8aff9a).setVisible(false);
+      this.biteT = 0; this.biteWas = false; this.chompT = 0; this.rallyT = 0;
 
       this.ants = []; this.seq = 0;
-      if (this.anyTrail()) {
-        const n = Math.min(K.antMax, Math.max(0, s.ants | 0)), m = Math.min(K.soldierMax, Math.max(0, s.soldiers | 0));
-        for (let i = 0; i < n; i++) this.spawnAnt('ant', -i * C.ant.gap * 0.5);
-        for (let i = 0; i < m; i++) this.spawnAnt('soldier', -i * C.ant.gap * 0.5);
-      }
+      this.claim = new Uint16Array((cake.cols >> 2) + 2);
+      for (const t of TYPES) { const n = Math.max(0, this.st.counts[t] | 0); this.st.counts[t] = 0; for (let i = 0; i < n; i++) this.spawn(t, i); }
 
-      this.trailG = this.add.graphics().setDepth(6);
-      this.trailT = 0;
-      this.parts = 0;
-      this.antGain = 0; this.antGainT = 0;
-      this.paths = { 1: this.newPath(1), '-1': this.newPath(-1) };
+      this.flagImg = this.add.image(0, 0, 'flag').setOrigin(6 / 32, 1).setDepth(19).setTint(0xff5a8a).setVisible(false);
+      this.flagG = this.add.graphics().setDepth(6);
+      this.sniffG = this.add.graphics().setDepth(6);
+      this.selRing = this.add.image(0, 0, 'ring').setDepth(19).setTint(0x7ad0ff).setVisible(false);
+      this.selSquad = null; this.drawT = 0;
+      this.parts = 0; this.gain = 0; this.gainT = 0; this.lastKind = null;
+      this.devSpeed = 1; this.uz = 1;
 
+      this.applyScoutLook();
       this.setupInput();
       AF.ui.init(this);
-      this.uiT = 0; this.saveT = 0;
-      this.zCur = 0;
+      this.uiT = 0; this.saveT = 0; this.zCur = 0;
 
       const persist = () => this.persist();
       window.addEventListener('pagehide', persist);
@@ -66,41 +64,27 @@
       if (window.AFLoaded) setTimeout(() => window.AFLoaded(), 60);
     }
 
-    anyTrail() { const t = this.st.trails; return t.cake || t.bread || t.grapes; }
-    count(kind) { let n = 0; for (const a of this.ants) if (a.kind === kind) n++; return n; }
-    nextTrail() { for (const k of C.dishOrder) if (!this.st.trails[k]) return k; return null; }
+    freshState(s) {
+      const st = { crumbs: 0, time: 0, won: false, hint: 0, flagUsed: false, up: {}, tu: {}, counts: {}, boosts: { speed: 0, bite: 0, carry: 0 }, flag: null };
+      for (const k of Object.keys(C.up)) st.up[k] = C.up[k].start;
+      for (const t of TYPES) { st.tu[t] = { speed: 1, carry: 1, bite: 1 }; st.counts[t] = 0; }
+      if (s.v !== 3) return st;
+      st.crumbs = Math.max(0, +s.crumbs || 0); st.time = Math.max(0, +s.time || 0);
+      st.won = !!s.won; st.hint = s.hint | 0; st.flagUsed = !!s.flagUsed;
+      if (s.up) for (const k of Object.keys(st.up)) if (typeof s.up[k] === 'number') st.up[k] = clamp(s.up[k] | 0, 0, C.up[k].max);
+      if (s.tu) for (const t of TYPES) if (s.tu[t]) for (const k of ['speed', 'carry', 'bite']) if (typeof s.tu[t][k] === 'number') st.tu[t][k] = clamp(s.tu[t][k] | 0, 1, C.typeUp[k].max);
+      if (s.counts) for (const t of TYPES) st.counts[t] = Math.max(0, s.counts[t] | 0);
+      if (s.boosts) for (const k of Object.keys(st.boosts)) st.boosts[k] = Math.max(0, +s.boosts[k] || 0);
+      return st;
+    }
 
-    // ---------- scenery ----------
     buildScenery() {
-      const far = this.add.graphics().setDepth(1);
-      const haze = 0x8c6f73;
-      far.fillStyle(haze, 0.2);
-      // big covered platters far behind, for later
-      far.fillEllipse(420, -8, 1100, 40);
-      far.beginPath(); far.arc(420, -14, 420, Math.PI, 0, false); far.closePath(); far.fillPath();
-      far.fillCircle(420, -444, 24);
-      far.fillStyle(haze, 0.4);
-      // soup bowl with steam, far right
-      far.beginPath(); far.arc(1250, -78, 70, 0, Math.PI, false); far.closePath(); far.fillPath();
-      far.fillRect(1220, -16, 60, 8);
-      far.lineStyle(3, haze, 0.35);
-      for (let i = 0; i < 3; i++) {
-        far.beginPath(); far.moveTo(1225 + i * 25, -88);
-        for (let k = 1; k <= 6; k++) far.lineTo(1225 + i * 25 + Math.sin(k * 1.3 + i) * 6, -88 - k * 10);
-        far.strokePath();
-      }
-      // a jug, far left
-      far.fillRoundedRect(-900, -150, 90, 150, 20); far.fillRect(-880, -175, 50, 30);
-
-      // tabletop band (seen nearly edge-on) and the cloth hanging toward us
       const t = this.add.graphics().setDepth(2);
-      t.fillStyle(0xe8d6b4, 1).fillRect(-4000, -8, 9000, 8);
-      t.fillStyle(0xffffff, 0.25).fillRect(-4000, -8, 9000, 1.5);
-      this.add.tileSprite(500, 0, 9000, 900, 'gingham').setOrigin(0.5, 0).setDepth(2).setTileScale(0.3);
+      t.fillStyle(0xe8d6b4, 1).fillRect(-3000, -8, 15000, 8);
+      t.fillStyle(0xffffff, 0.25).fillRect(-3000, -8, 15000, 1.5);
+      this.add.tileSprite(4500, 0, 15000, 1800, 'gingham').setOrigin(0.5, 0).setDepth(2).setTileScale(0.3);
       const sh = this.add.graphics().setDepth(3);
-      sh.fillStyle(0x000000, 0.16).fillRect(-4000, 0, 9000, 5);
-
-      // nest hole with a few dug-out grains
+      sh.fillStyle(0x000000, 0.16).fillRect(-3000, 0, 15000, 5);
       const nx = C.world.nestX;
       const g = this.add.graphics().setDepth(4);
       g.fillStyle(0xb48a5c, 1).fillEllipse(nx - 17, -1.5, 9, 4).fillEllipse(nx + 17, -1.5, 9, 4).fillEllipse(nx + 22, -1, 5, 2.5);
@@ -109,416 +93,537 @@
     }
 
     // ---------- input ----------
-    // Keyboard on PC, on-screen pad on phones. No mouse/tap movement.
     setupInput() {
       const kb = this.input.keyboard;
-      if (kb) this.keys = kb.addKeys('LEFT,RIGHT,A,D,SPACE');
-      AF.pad = AF.pad || { left: false, right: false, bite: false };
+      if (kb) this.keys = kb.addKeys('LEFT,RIGHT,UP,DOWN,A,D,W,S,SPACE,B,R');
+      AF.pad = AF.pad || {};
+      this.padWas = {};
+      this.input.on('pointerdown', (p) => this.tap(p));
+      this.input.on('wheel', (p, o, dx, dy) => this.zoomBy(dy > 0 ? 0.9 : 1.1));
     }
 
     readInput() {
       const k = this.keys, p = AF.pad;
       const d = (o) => !!(o && o.isDown);
-      if (this.st.won) return { dx: 0, bite: false };
+      const jd = (o) => !!(o && Phaser.Input.Keyboard.JustDown(o));
+      const pe = (n) => { const on = !!p[n], was = this.padWas[n]; this.padWas[n] = on; return on && !was; };
+      if (this.st.won && !AF.ui.keepGoing) return { dx: 0 };
       const left = (k && (d(k.LEFT) || d(k.A))) || p.left, right = (k && (d(k.RIGHT) || d(k.D))) || p.right;
-      return { dx: (right ? 1 : 0) - (left ? 1 : 0), bite: (k && d(k.SPACE)) || p.bite };
-    }
-
-    // Bite the food right under/in front of the scout. Crust needs strong enough jaws.
-    scoutBite() {
-      const sc = this.scout, st = this.st;
-      if (sc.load >= sc.capacity) return;
-      const n = Math.min(st.jaws, sc.capacity - sc.load), str = st.jaws;
-      const face = sc.flip ? -1 : 1;
-      const d = this.table.dishAt(sc.x) || this.table.dishAt(sc.x + face * (sc.half + 2));
-      if (!d) return;
-      let eaten = 0, color = 0, tooHard = false;
-      if (d.grapes) {
-        const g = d.grapeNear(sc.x + face * sc.half * 0.5, sc.h, sc.half + 3);
-        if (!g) return;
-        const r = d.bite(g, n, Math.sign(g.x - sc.x) || face);
-        eaten = r.n; color = r.color;
-      } else {
-        const mid = d.colAt(sc.x), headC = d.colAt(sc.x + face * (sc.half + 1));
-        if (mid < 0 && headC < 0) return;
-        const cand = [];
-        for (const c of [mid - 1, mid, mid + 1, headC]) if (c >= 0 && c < d.cols && cand.indexOf(c) < 0) cand.push(c);
-        for (let k = 0; k < n; k++) {
-          let best = -1;
-          for (const c of cand) {
-            const top = d.topH(c);
-            if (d.h[c] <= 0 || top > sc.h + 0.5 || top < sc.h - d.cell * 1.5) continue; // only food right under its jaws
-            if (!d.edible(c, str)) { tooHard = true; continue; }
-            const side = (c - mid) * face;
-            if (best < 0 || d.h[c] > d.h[best] || (d.h[c] === d.h[best] && side > (best - mid) * face)) best = c;
-          }
-          if (best < 0) break;
-          color = d.remove(best, d.h[best] - 1); eaten++;
-        }
-      }
-      if (!eaten) {
-        if (tooHard && this.hardT <= 0) { this.hardT = 2.5; this.floater(sc.x, -sc.h - 10, 'Too hard!', 14); AF.audio.blip(220); }
-        return;
-      }
-      sc.load += eaten; sc.color = color;
-      this.spray(sc.x + face * 6, -sc.h - 3, color, 3);
-      AF.audio.chomp();
-      if (st.hint === 0) st.hint = 1;
-    }
-
-    // ---------- economy ----------
-    scoutCap() { return C.scout.capPerPower * this.st.jaws; }
-    unitStats(kind) {
-      const u = this.st.up, spd = 1 + 0.25 * (u.speed - 1);
-      if (kind === 'soldier') {
-        const s = C.soldier;
-        return { speed: s.speed * spd, climb: s.climb * spd, cap: s.cap + 3 * (u.carry - 1), bite: s.bite + (u.bite - 1), str: s.strength, biteTime: s.biteTime };
-      }
-      const a = C.ant;
-      return { speed: a.speed * spd, climb: a.climb * spd, cap: a.cap + 3 * (u.carry - 1), bite: u.bite, str: 1, biteTime: a.biteTime };
-    }
-    applyStats() {
-      for (const a of this.ants) {
-        const s = this.unitStats(a.kind);
-        a.w.speed = s.speed; a.w.climb = s.climb; a.w.capacity = s.cap; a.s = s;
-      }
-    }
-
-    prices() {
-      const st = this.st, nt = this.nextTrail();
+      const upPress = (k && (jd(k.UP) | jd(k.W))) || pe('up');
       return {
-        jaws: st.jaws >= K.jawsMax ? null : jawsCost(st.jaws),
-        trail: nt ? K.trails[nt] : null,
-        ant: this.count('ant') >= K.antMax ? null : antCost(this.count('ant')),
-        soldier: this.count('soldier') >= K.soldierMax ? null : soldierCost(this.count('soldier')),
-        speed: st.up.speed >= K.speed.max ? null : upCost('speed', st.up.speed),
-        carry: st.up.carry >= K.carry.max ? null : upCost('carry', st.up.carry),
-        bite: st.up.bite >= K.bite.max ? null : upCost('bite', st.up.bite),
+        dx: (right ? 1 : 0) - (left ? 1 : 0),
+        bite: (k && d(k.SPACE)) || p.bite,
+        up: (k && (d(k.UP) || d(k.W))) || p.up, upPress,
+        down: (k && (d(k.DOWN) || d(k.S))) || p.down,
+        chomp: (k && jd(k.B)) || pe('chomp'),
+        rally: (k && jd(k.R)) || pe('rally'),
       };
     }
 
-    buy(kind) {
-      const st = this.st;
-      if (st.won) return;
-      const c = this.prices()[kind];
-      if (c == null || st.crumbs < c) return;
-      if ((kind === 'ant' || kind === 'soldier' || UPS.indexOf(kind) >= 0) && !st.trails.cake) return;
-      if (kind === 'soldier' && !st.trails.bread) return;
-      st.crumbs -= c;
-      if (kind === 'jaws') {
-        st.jaws++;
-        this.scout.capacity = this.scoutCap();
-        this.ring(this.scout.x, -this.scout.h - 6);
-        AF.audio.blip(880);
-      } else if (kind === 'trail') {
-        const k = this.nextTrail();
-        st.trails[k] = true;
-        if (k === 'cake') this.spawnAnt('ant', 0); // the first trail ant comes with the trail
-        this.trailT = 99;
-        AF.audio.blip(520);
-      } else if (kind === 'ant' || kind === 'soldier') {
-        this.spawnAnt(kind, 0);
-        AF.audio.blip(kind === 'ant' ? 700 : 400);
-      } else {
-        st.up[kind]++;
-        this.applyStats();
-        AF.audio.blip(780);
+    // tap the world: select a squad, send the selected squad, or plant a pheromone flag
+    tap(p) {
+      if (this.st.won) return;
+      const wp = this.cameras.main.getWorldPoint(p.x, p.y), x = wp.x, h = -wp.y;
+      const z = this.cameras.main.zoom, near = Math.max(10, (22 * AF.DPR) / z);
+      let hit = null, hd = near;
+      for (const a of this.ants) if (a.type === 'squad') {
+        const d = Math.hypot(a.w.x - x, a.w.h + 4 - h);
+        if (d < hd) { hd = d; hit = a; }
       }
+      if (hit) { this.selSquad = this.selSquad === hit ? null : hit; AF.audio.blip(900); if (this.selSquad) AF.ui.toast('Squad selected: tap a spot on the cake to dig there'); return; }
+      if (this.selSquad) {
+        const c = this.cake.colAt(x);
+        if (c < 0 || this.cake.h[c] === 0) { AF.ui.toast('Tap a spot on the cake'); return; }
+        const a = this.selSquad; a.target = c; this.selSquad = null;
+        this.retarget(a); this.ring(this.cake.colCenter(c), -this.cake.topH(c));
+        AF.audio.blip(760);
+        return;
+      }
+      this.placeFlag(x, 0);
+    }
+
+    placeFlag(x, extra) {
+      const st = this.st;
+      st.flag = { x: clamp(x, this.cake.x0, this.cake.x1 - 1), t: this.flagTime(), r: this.flagRadius() + (extra || 0) };
+      st.flagUsed = true;
+      for (const a of this.ants) if (a.type !== 'squad' && (a.state === 'out' || a.state === 'dig') && a.w.load < this.stats(a.type).carry * 0.5) this.retarget(a);
+      this.ring(st.flag.x, -this.cake.surfaceAt(st.flag.x) - 8);
+      this.drawFlagRange();
+      AF.audio.blip(820);
+    }
+    flagTime() { return 10 + 5 * this.st.up.flagTime; }
+    flagRadius() { return 40 + 30 * this.st.up.flagPow; }
+
+    zoomBy(f) { this.uz = clamp(this.uz * f, 0.15, 4); }
+
+    // ---------- stats ----------
+    boostMul(k) { return this.st.boosts[k] > 0 ? C.boosts[k] : 1; }
+    valMul() { return 1 + 0.25 * (this.st.up.value - 1); }
+    nestCap() { return C.nestBase + C.nestPer * (this.st.up.nest - 1); }
+    units() { let n = 0; for (const t of TYPES) n += this.st.counts[t] * (t === 'squad' ? 5 : 1); return n; }
+    unlocked(t) { return t === 'worker' || this.st.up['unlock.' + t] > 0; }
+    squadMembers() { return 4 + this.st.up.squadSize; }
+    stats(t) {
+      const T = C.types[t], u = this.st.tu[t], sp = (1 + 0.2 * (u.speed - 1)) * this.boostMul('speed');
+      const trail = t === 'flying' ? 1 : 1 + 0.1 * (this.st.up.trails - 1);
+      let bite = T.bite * (1 + 0.5 * (u.bite - 1)) * this.boostMul('bite');
+      let carry = Math.round(T.carry * (1 + 0.6 * (u.carry - 1)) * this.boostMul('carry'));
+      if (t === 'squad') { bite *= this.squadMembers(); carry *= this.squadMembers(); }
+      return { speed: T.speed * sp * trail, climb: T.climb * sp * trail, bite, carry, biteTime: T.biteTime };
+    }
+    scoutCap() { return C.scout.capPerJaw * this.st.up.jaws * this.boostMul('carry'); }
+
+    upPrice(key) {
+      const u = C.up[key], lv = this.st.up[key];
+      if (lv >= u.max) return null;
+      if (u.costs) return u.costs[lv - u.start];
+      return Math.ceil(u.base * Math.pow(u.g, lv - u.start));
+    }
+    typePrice(t, k) {
+      const u = C.typeUp[k], lv = this.st.tu[t][k];
+      if (lv >= u.max) return null;
+      return Math.ceil(u.base * C.types[t].costMul * Math.pow(u.g, lv - u.start));
+    }
+    hirePrice(t) { const T = C.types[t]; return Math.ceil(T.hire * Math.pow(T.hireG, this.st.counts[t])); }
+
+    // ---------- buying ----------
+    buy(id) {
+      const st = this.st;
+      let price = null, apply = null;
+      if (id.startsWith('hire.')) {
+        const t = id.slice(5), T = C.types[t];
+        if (!this.unlocked(t) || (T.max && st.counts[t] >= T.max)) return;
+        if (this.units() + (t === 'squad' ? 5 : 1) > this.nestCap()) { AF.ui.toast('The nest is full. Grow it in Colony'); return; }
+        price = this.hirePrice(t); apply = () => { this.spawn(t, 0); if (st.hint < 3) st.hint = 3; };
+      } else if (id.startsWith('type.')) {
+        const [, t, k] = id.split('.');
+        price = this.typePrice(t, k); apply = () => { st.tu[t][k]++; };
+      } else if (C.up[id]) {
+        price = this.upPrice(id);
+        apply = () => {
+          st.up[id]++;
+          if (id.startsWith('unlock.')) { const t = id.slice(7); AF.ui.toast(`<b>${C.types[t].name}s unlocked!</b> Hire them in the Ants tab`, true); }
+          if (id === 'wings') { this.applyScoutLook(); AF.ui.toast(['', 'Wings: press ▲ / Up to hop', 'Wings: hold ▲ / Up to glide', 'Wings: fly with ▲ ▼ / Up Down'][st.up.wings], true); }
+          if (id === 'squadSize') for (const a of this.ants) if (a.type === 'squad') this.buildMembers(a);
+        };
+      }
+      if (price == null || st.crumbs < price || !apply) return;
+      st.crumbs -= price;
+      apply();
+      AF.audio.blip(780);
       this.refreshUI();
       this.persist();
     }
 
-    // New ants wait at the nest and pick a dish to work on.
-    spawnAnt(kind, dx) {
-      const x = C.world.nestX + dx;
-      const sol = kind === 'soldier', s = this.unitStats(kind);
-      const w = new AF.Walker(this, this.table, x, {
-        speed: s.speed, climb: s.climb, texture: sol ? 'soldier' : 'ant', scale: sol ? C.soldier.scale : C.ant.scale,
-        depth: (sol ? 16 : 15) + Math.random() * 0.5,
-      });
-      w.capacity = s.cap;
-      this.ants.push({ w, kind, s, state: 'home', dish: null, seq: ++this.seq, bseq: 0, biteT: 0, D: 0, pair: null, grape: null });
+    applyScoutLook() {
+      const sc = this.scout;
+      sc.key = this.st.up.wings > 0 ? 'scoutw' : 'scout';
+      sc.spr.setTexture(sc.key + sc.frame);
+      sc.speed = C.scout.speed * (1 + 0.15 * (this.st.up.legs - 1));
+      sc.climb = C.scout.climb * (1 + 0.15 * (this.st.up.legs - 1));
     }
 
-    // ---------- loop ----------
-    update(_t, delta) {
-      const dt = Math.min(delta / 1000, 0.05);
-      const st = this.st;
-      if (!st.won) st.time += dt;
-      this.hardT -= dt;
-      this.updateScout(dt);
-      this.updateAnts(dt);
-      this.table.update(dt);
-      this.table.flush();
-
-      this.trailT += dt;
-      if (this.trailT > 0.2) { this.trailT = 0; this.drawTrail(); }
-
-      if (this.antGain > 0) {
-        this.antGainT += dt;
-        if (this.antGainT > 1) { this.floater(C.world.nestX + 14, -10, '+' + this.antGain, 13); this.antGain = 0; this.antGainT = 0; }
-      }
-
-      if (!st.won && this.table.left <= 0) {
-        st.won = true;
-        this.persist();
-        AF.audio.blip(990);
-        this.time.delayedCall(600, () => AF.ui.showWin(st.time));
-      }
-
-      this.updateCamera(dt, false);
-
-      this.uiT += dt;
-      if (this.uiT > 0.1) { this.uiT = 0; this.refreshUI(); }
-      this.saveT += dt;
-      if (this.saveT > 3) { this.saveT = 0; this.persist(); }
+    // ---------- ants ----------
+    spawn(t, i) {
+      const T = C.types[t], s = this.stats(t);
+      const w = new AF.Walker(this, this.cake, C.world.nestX - (i || 0) * 0.5, { speed: s.speed, climb: s.climb, texture: T.tex, scale: T.scale, depth: t === 'flying' ? 14 : 12 });
+      w.capacity = s.carry; w.loadVal = 0;
+      const a = { type: t, w, state: 'home', D: 0, tc: -1, biteT: Math.random() * 0.3, seq: this.seq++, target: null, ph: null, cruise: 0, members: null };
+      if (t === 'squad') this.buildMembers(a);
+      this.ants.push(a);
+      this.st.counts[t]++;
+      return a;
     }
 
-    updateScout(dt) {
-      const sc = this.scout, st = this.st;
-      const inp = this.readInput();
-      sc.drive(inp, dt);
+    buildMembers(a) {
+      if (a.members) for (const m of a.members) m.destroy();
+      a.members = [];
+      const n = this.squadMembers() - 1, T = C.types.squad;
+      for (let i = 0; i < n; i++) a.members.push(this.add.image(0, 0, 'squad0').setOrigin(0.5, 0.96).setScale((C.antLength / AF.ANT_TEX_W) * T.scale * 0.85).setDepth(11.9));
+    }
 
-      // bite: first press bites at once, holding repeats every biteTime
-      if (inp.bite) {
-        if (!this.biteWas) { this.biteT = 0; this.scoutBite(); }
-        else {
-          this.biteT += dt;
-          if (this.biteT >= C.scout.biteTime) { this.biteT = 0; this.scoutBite(); }
+    setTarget(a, c) {
+      if (a.tc >= 0) this.claim[a.tc >> 2] = Math.max(0, this.claim[a.tc >> 2] - 1);
+      a.tc = c;
+      if (c >= 0) this.claim[c >> 2]++;
+    }
+
+    retarget(a) {
+      if (a.state === 'back') return;
+      this.setTarget(a, this.pick(a));
+      a.state = a.tc >= 0 ? 'out' : 'home';
+      if (a.type === 'flying') this.planFlight(a, a.tc >= 0 ? this.cake.colCenter(a.tc) : C.world.nestX);
+    }
+
+    // Instinct: weigh value, how well this ant handles the layer, distance and climbing, and crowding.
+    pick(a) {
+      const cake = this.cake, cols = cake.cols, H = cake.h, t = a.type, eff = EFF[t], nest = C.world.nestX;
+      if (t === 'squad' && a.target != null) {
+        for (let d = 0; d < 6; d++) for (const c of [a.target - d, a.target + d]) if (c >= 0 && c < cols && H[c] > 0) { a.target = c; return c; }
+        a.target = null;
+      }
+      let lo = 0, hi = cols - 1;
+      const f = this.st.flag;
+      if (f && t !== 'squad') {
+        const l2 = cake.colAt(f.x - f.r), h2 = cake.colAt(f.x + f.r);
+        const L = l2 < 0 ? 0 : l2, R = h2 < 0 ? cols - 1 : h2;
+        let any = false;
+        for (let c = L; c <= R; c++) if (H[c] > 0) { any = true; break; }
+        if (any) { lo = L; hi = R; }
+      }
+      const stepC = Math.max(1, Math.floor((hi - lo + 1) / 140));
+      let best = -1, bs = -1;
+      for (let c0 = lo; c0 <= hi; c0 += stepC) {
+        // within each sample bucket, the tallest column (eat the high cells first, no narrow shafts)
+        let c = -1;
+        for (let k = c0; k < Math.min(hi + 1, c0 + stepC); k++) if (H[k] > 0 && (c < 0 || H[k] > H[c])) c = k;
+        if (c < 0) continue;
+        const kind = cake.topKind(c), L = C.layers[kind];
+        const top = cake.topH(c), x = cake.colCenter(c);
+        let v = L.value * eff(kind) / L.hard;
+        let cost;
+        if (t === 'flying') { v *= 1 + top / 250; cost = 1 + (x - nest) / 2500; }
+        else cost = 1 + ((x - nest) + top * 1.5) / 400;
+        if (L.sticky && t !== 'squad') v *= 0.6;
+        const cl = this.claim[c >> 2] - (a.tc >= 0 && a.tc >> 2 === c >> 2 ? 1 : 0);
+        const crowd = t === 'squad' ? 1 + 4 * cl : 1 + 1.5 * cl;
+        const sc = v / cost / crowd * (0.9 + 0.2 * Math.random());
+        if (sc > bs) { bs = sc; best = c; }
+      }
+      return best;
+    }
+
+    // flyers go up, across above the cake, then land (and the same way home)
+    planFlight(a, tx) {
+      const cake = this.cake, w = a.w;
+      const c1 = cake.colAt(Math.min(w.x, tx)), c2 = cake.colAt(Math.max(w.x, tx));
+      let top = 0;
+      const lo = c1 < 0 ? 0 : c1, hi = c2 < 0 ? (Math.max(w.x, tx) > cake.x1 ? cake.cols - 1 : -1) : c2;
+      for (let c = lo; c <= hi; c += 2) top = Math.max(top, cake.topH(c));
+      a.cruise = Math.max(w.h, top + 14 + Math.random() * 10);
+      a.ph = 'rise'; a.fx = tx;
+    }
+
+    flyStep(a, th, dt) {
+      const w = a.w, sp = w.speed * dt;
+      w.mode = 'walk'; w.moving = true;
+      if (a.ph === 'rise') { w.h = Math.min(a.cruise, w.h + sp); if (w.h >= a.cruise - 0.01) a.ph = 'cruise'; return false; }
+      if (a.ph === 'cruise') {
+        const dx = a.fx - w.x;
+        w.flip = dx < 0;
+        if (Math.abs(dx) <= sp) { w.x = a.fx; a.ph = 'land'; } else w.x += Math.sign(dx) * sp;
+        return false;
+      }
+      if (a.ph === 'land') {
+        if (w.h - th <= sp) { w.h = th; a.ph = null; return true; }
+        w.h -= sp; return false;
+      }
+      return true;
+    }
+
+    updateAnts(dt) {
+      const cake = this.cake, st = this.st, nest = C.world.nestX, gap = C.ant.gap, sc = this.scout;
+      const TS = {}; for (const t of TYPES) TS[t] = this.stats(t);
+      const aura = st.up.aura > 0 ? 1 + 0.1 * st.up.aura : 1;
+      const outs = [], backs = [];
+      for (const a of this.ants) {
+        if (a.type === 'flying') continue;
+        a.D = (a.w.x - nest) + a.w.h;
+        if (a.state === 'out' && a.tc >= 0 && cake.colCenter(a.tc) > a.w.x) outs.push(a);
+        else if (a.state === 'back') backs.push(a);
+      }
+      outs.sort((p, q) => q.D - p.D);
+      backs.sort((p, q) => p.D - q.D);
+      for (let i = 0; i < outs.length; i++) outs[i].lim = i ? outs[i - 1].D - gap - outs[i].D : Infinity;
+      for (let i = 0; i < backs.length; i++) backs[i].lim = i ? backs[i].D - (backs[i - 1].D + gap) : Infinity;
+
+      for (const a of this.ants) {
+        const w = a.w, s = TS[a.type], fly = a.type === 'flying';
+        let mul = 1;
+        if (aura > 1 && Math.abs(w.x - sc.x) < 60 && Math.abs(w.h - sc.h) < 60) mul = aura;
+        let sticky = 1;
+        if (!fly && a.type !== 'squad') {
+          const c = cake.colAt(w.x);
+          if (c >= 0 && Math.abs(w.h - cake.topH(c)) < 1 && cake.topKind(c) === 'jam') sticky = C.layers.jam.sticky;
         }
+        w.speed = s.speed * mul * sticky; w.climb = s.climb * mul * sticky; w.capacity = s.carry;
+
+        if (a.state === 'home') { this.retarget(a); if (a.state === 'home') { w.moving = false; w.render(dt); this.drawMembers(a); continue; } }
+        if (a.state === 'out' && (a.tc < 0 || cake.h[a.tc] === 0)) this.retarget(a);
+
+        if (a.state === 'out') {
+          const tx = cake.colCenter(a.tc);
+          let arrived;
+          if (fly) arrived = this.flyStep(a, cake.topH(a.tc), dt);
+          else arrived = w.step(tx, dt, a.lim === undefined ? Infinity : a.lim);
+          a.lim = undefined;
+          if (arrived) { a.state = 'dig'; a.biteT = 0; }
+        } else if (a.state === 'dig') {
+          if (fly) { w.h = Math.max(cake.surfaceAt(w.x), w.h - w.climb * dt); w.moving = false; } else w.step(cake.colCenter(a.tc), dt);
+          if (cake.h[a.tc] === 0) {
+            if (w.load > 0) this.goHome(a); else this.retarget(a);
+          } else if (Math.abs(w.h - cake.topH(a.tc)) < 1) {
+            a.biteT += dt;
+            if (a.biteT >= s.biteTime) {
+              a.biteT = 0;
+              const res = cake.eat(a.tc, s.bite * mul, Math.max(0, s.carry - w.load), EFF[a.type]);
+              if (res.n) {
+                w.load += res.n; w.loadVal += res.value; w.color = res.color; this.lastKind = res.kind;
+                if (Math.random() < 0.3) this.spray(w.x, -w.h - 2, res.color, 1);
+              }
+              if (res.item) this.foundItem(res.item);
+              if (w.load >= s.carry) this.goHome(a);
+            }
+          }
+        } else if (a.state === 'back') {
+          let home;
+          if (fly) home = this.flyStep(a, 0, dt);
+          else home = w.step(nest, dt, a.lim === undefined ? Infinity : a.lim);
+          a.lim = undefined;
+          if (home && w.h < 1) {
+            const v = w.loadVal * this.valMul();
+            st.crumbs += v; this.gain += v;
+            w.load = 0; w.loadVal = 0;
+            a.state = 'home';
+          }
+        }
+        if (fly) { w.rot = 0; }
+        w.render(dt);
+        if (fly) w.spr.setPosition(w.x, -w.h).setRotation(0);
+        this.drawMembers(a);
       }
-      this.biteWas = inp.bite;
+    }
+
+    goHome(a) {
+      this.setTarget(a, -1);
+      a.state = 'back';
+      if (a.type === 'flying') this.planFlight(a, C.world.nestX);
+    }
+
+    drawMembers(a) {
+      if (!a.members) return;
+      const w = a.w, dir = w.flip ? 1 : -1;
+      a.members.forEach((m, i) => {
+        const ring = i % 2 ? 1 : -1;
+        const x = w.x + dir * (4 + 3 * Math.floor(i / 2)) + ring * 1.5;
+        const h = Math.max(this.cake.surfaceAt(x), Math.min(w.h, this.cake.surfaceAt(x) + 3));
+        const fr = w.frame ^ (i & 1);
+        m.setTexture('squad' + fr).setPosition(x, -h).setFlipX(w.flip).setRotation(w.mode === 'walk' ? 0 : w.rot * 0.5);
+      });
+      if (this.selSquad === a) this.selRing.setVisible(true).setPosition(w.x, -w.h - 4).setScale(0.35 + 0.04 * Math.sin(this.time.now / 120));
+    }
+
+    foundItem(it) {
+      const def = C.items[it.key], st = this.st;
+      const burst = Math.round(def.burst * this.valMul());
+      st.crumbs += burst;
+      const ks = def.boost === 'all' ? ['speed', 'bite', 'carry'] : [def.boost];
+      for (const k of ks) st.boosts[k] = Math.max(st.boosts[k], def.time);
+      const x = this.cake.colCenter(it.c + 1), y = -(this.cake.base + (it.r + 1.5) * C.cell);
+      this.ring(x, y); this.ring(x, y - 6);
+      const col = (def.color[0] << 16) | (def.color[1] << 8) | def.color[2];
+      this.spray(x, y, col, 14); this.spray(x, y, 0xffe08a, 10);
+      this.floater(x, y - 8, '+' + AF.fmt(burst), 20);
+      const bt = def.boost === 'all' ? 'everything' : def.boost;
+      AF.ui.toast(`<b>${def.name}!</b> +${AF.fmt(burst)} crumbs · ${bt} boost ${def.time}s`, true);
+      AF.audio.blip(990); AF.audio.blip(1320);
+    }
+
+    // ---------- scout ----------
+    updateScout(dt) {
+      const sc = this.scout, st = this.st, cake = this.cake, inp = this.readInput(), wings = st.up.wings;
+      sc.capacity = this.scoutCap();
+      if (!sc.air && inp.upPress && wings > 0) { sc.air = true; sc.vy = Math.sqrt(2 * C.scout.gravity * C.scout.hop); }
+      if (sc.air) {
+        const dx = inp.dx || 0;
+        if (dx) {
+          sc.flip = dx < 0;
+          const nx = clamp(sc.x + dx * sc.speed * dt, C.world.left, C.world.right);
+          if (cake.surfaceAt(nx + dx * sc.half * 0.6) <= sc.h) sc.x = nx;
+        }
+        const g = C.scout.gravity;
+        if (wings >= 3) {
+          const tv = inp.up ? C.scout.fly : inp.down ? -C.scout.fly : -15;
+          sc.vy += (tv - sc.vy) * Math.min(1, dt * 6);
+        } else {
+          sc.vy -= g * dt;
+          if (wings >= 2 && inp.up && sc.vy < -C.scout.glide) sc.vy = -C.scout.glide;
+        }
+        sc.h += sc.vy * dt;
+        if (sc.h > C.world.ceiling) { sc.h = C.world.ceiling; sc.vy = Math.min(0, sc.vy); }
+        const s = sc.S(sc.x);
+        if (sc.h <= s) { sc.h = s; sc.air = false; sc.vy = 0; }
+        sc.mode = 'walk'; sc.moving = true; sc.rot += (0 - sc.rot) * Math.min(1, dt * 16);
+      } else sc.drive({ dx: inp.dx || 0 }, dt);
+
+      if (inp.bite && !sc.air) {
+        if (!this.biteWas) { this.biteT = 0; this.scoutBite(); }
+        else { this.biteT += dt; if (this.biteT >= C.scout.biteTime) { this.biteT = 0; this.scoutBite(); } }
+      }
+      this.biteWas = !!inp.bite;
+      this.chompT -= dt; this.rallyT -= dt;
+      if (inp.chomp && st.up.bigbite > 0) this.bigBite();
+      if (inp.rally && st.up.rally > 0) {
+        if (this.rallyT > 0) AF.ui.toast(`Rally ready in ${Math.ceil(this.rallyT)}s`);
+        else { this.rallyT = Math.max(5, 20 - 2 * st.up.rally); this.placeFlag(sc.x, 20 * st.up.rally); AF.ui.toast('Rally! Ants follow your scent'); }
+      }
 
       // drop off at the nest
       if (sc.load > 0 && Math.abs(sc.x - C.world.nestX) <= C.world.nestRadius && sc.h < 1) {
-        const n = sc.load; sc.load = 0;
-        st.crumbs += n;
-        this.floater(sc.x, -14, '+' + n, 18);
+        const v = Math.round(sc.loadVal * this.valMul());
+        sc.load = 0; sc.loadVal = 0;
+        st.crumbs += v;
+        this.floater(sc.x, -14, '+' + AF.fmt(v), 18);
         AF.audio.blip(660);
         if (st.hint < 2) st.hint = 2;
       }
 
       sc.render(dt);
+      if (sc.air) { sc.ox = 0; sc.spr.setPosition(sc.x, -sc.h); }
       const z = this.cameras.main.zoom;
       const ms = (16 * AF.DPR) / (32 * z);
       const bob = Math.sin(this.time.now / 180) * 3 * AF.DPR / z;
       this.marker.setScale(Math.max(ms, 0.2)).setPosition(sc.x, -sc.h - 13 - (10 * AF.DPR) / z + bob);
+      this.updateScent(ms);
     }
 
-    // ---------- path distance from the nest along the food's outline, per direction ----------
-    // Slot k spans u in [o + 6k, o + 6k + 6) where u is the distance from the nest outward.
-    newPath(dir) {
-      const cell = C.cell, nest = C.world.nestX;
-      const edge = dir > 0 ? C.world.right : C.world.left;
-      // slot borders line up with the dishes' cells (x0 = 2 mod 6)
-      const first = dir > 0 ? Math.ceil((nest - 2) / cell) * cell + 2 : Math.floor((nest - 2) / cell) * cell + 2;
-      const o = Math.abs(first - nest);
-      const n = Math.ceil((Math.abs(edge - nest) - o) / cell) + 2;
-      return { dir, o, n, S: new Float64Array(n + 1), L: new Float64Array(n + 1), P: new Float64Array(n + 1) };
-    }
-
-    buildPath(p) {
-      const cell = C.cell, nest = C.world.nestX, t = this.table;
-      let d = p.o, prev = 0;
-      for (let k = 0; k < p.n; k++) {
-        const s = t.surfaceAt(nest + p.dir * (p.o + cell * k + cell / 2));
-        p.S[k] = s; p.L[k] = d; p.P[k] = prev;
-        d += Math.abs(s - prev) + cell; prev = s;
+    // columns the scout's jaws reach: under it and right in front of its head
+    jawCols() {
+      const sc = this.scout, cake = this.cake, face = sc.flip ? -1 : 1;
+      const mid = cake.colAt(sc.x), head = cake.colAt(sc.x + face * (sc.half + 1));
+      const out = [];
+      for (const c of [mid - 1, mid, mid + 1, head]) {
+        if (c < 0 || c >= cake.cols || out.indexOf(c) >= 0 || cake.h[c] === 0) continue;
+        const top = cake.topH(c);
+        if (top > sc.h + 0.5 || top < sc.h - C.cell * 1.5) continue;
+        out.push(c);
       }
-      p.S[p.n] = 0; p.L[p.n] = d; p.P[p.n] = prev;
+      return out;
     }
 
-    pathD(x, h, dir) {
-      const p = this.paths[dir], cell = C.cell;
-      const u = dir * (x - C.world.nestX);
-      if (u < p.o) return Math.max(0, u) + h;
-      const k = Math.min(p.n - 1, Math.floor((u - p.o) / cell)), within = u - p.o - cell * k, s = p.S[k];
-      if (h > s + 0.5) { // on a wall: the far wall (into the next slot) or the near one (back toward the nest)
-        const far = p.S[k + 1] >= h - 0.5, near = p.P[k] >= h - 0.5;
-        if (far && (!near || cell - within < within)) return p.L[k + 1] + (h - s); // climbing into the next slot
-        return p.L[k] + Math.max(0, p.P[k] - h) + within; // dropping into this slot
+    scoutBite() {
+      const sc = this.scout, cake = this.cake, st = this.st;
+      if (sc.load >= sc.capacity) return;
+      const cand = this.jawCols();
+      if (!cand.length) return;
+      let best = cand[0];
+      for (const c of cand) if (cake.h[c] > cake.h[best]) best = c;
+      const res = cake.eat(best, st.up.jaws * this.boostMul('bite'), sc.capacity - sc.load, null);
+      if (res.n) {
+        sc.load += res.n; sc.loadVal += res.value; sc.color = res.color; this.lastKind = res.kind;
+        this.spray(cake.colCenter(best), -cake.topH(best) - 2, res.color, 3);
+        if (st.hint === 0) st.hint = 1;
       }
-      return p.L[k] + Math.abs(s - p.P[k]) + within;
+      AF.audio.chomp();
+      if (res.item) this.foundItem(res.item);
     }
 
-    // ---------- trail ants ----------
-    // Can this unit eat anything on dish d?
-    canEat(a, d) {
-      if (d.left <= 0) return false;
-      if (d.grapes) return true;
-      for (let c = 0; c < d.cols; c++) if (d.edible(c, a.s.str)) return true;
-      return false;
+    bigBite() {
+      if (this.chompT > 0) { AF.ui.toast(`Big bite ready in ${Math.ceil(this.chompT)}s`); return; }
+      const sc = this.scout, cake = this.cake, lv = this.st.up.bigbite;
+      const mid = cake.colAt(sc.x + (sc.flip ? -1 : 1) * sc.half * 0.5);
+      if (mid < 0 && !this.jawCols().length) return;
+      let total = 0;
+      for (let c = mid - 1; c <= mid + 1; c++) {
+        if (c < 0 || c >= cake.cols || cake.h[c] === 0) continue;
+        const top = cake.topH(c);
+        if (top > sc.h + C.cell * 2 || top < sc.h - C.cell * 3) continue;
+        const res = cake.eat(c, 6 * lv * this.st.up.jaws, 2 + lv, null);
+        total += res.value;
+        if (res.n) this.spray(cake.colCenter(c), -cake.topH(c) - 2, res.color, 4);
+        if (res.item) this.foundItem(res.item);
+      }
+      if (!total) return;
+      this.chompT = C.scout.chompCd;
+      const v = Math.round(total * this.valMul());
+      this.st.crumbs += v;
+      this.floater(sc.x, -sc.h - 12, 'CHOMP +' + AF.fmt(v), 16);
+      this.cameras.main.shake(120, 0.004);
+      AF.audio.chomp(); AF.audio.blip(300);
     }
 
-    // At the nest: pick the trail with the fewest workers per share of what is left. Soldiers go for the crust.
-    pickDish(a) {
-      const t = this.table, st = this.st, counts = {};
-      for (const b of this.ants) if (b.dish && b !== a) counts[b.dish] = (counts[b.dish] || 0) + (b.kind === 'soldier' ? 2 : 1);
-      let best = null, bs = Infinity;
-      for (const d of t.list) {
-        if (!st.trails[d.key] || !this.canEat(a, d)) continue;
-        let score = (counts[d.key] || 0) / Math.max(0.15, Math.sqrt(d.left / d.total));
-        if (a.kind === 'soldier' && d.key === 'bread') score -= 1000; // soldiers crack the crust first
-        if (score < bs) { bs = score; best = d.key; }
+    nearestItem(maxD) {
+      const sc = this.scout, cake = this.cake;
+      let best = null, bd = maxD;
+      for (const it of cake.items) {
+        if (it.found) continue;
+        const x = cake.colCenter(it.c + 1), h = cake.base + (it.r + 1.5) * C.cell;
+        const d = Math.hypot(x - sc.x, h - sc.h);
+        if (d < bd) { bd = d; best = { x, h, d }; }
       }
       return best;
     }
 
-    updateAnts(dt) {
-      const t = this.table, nest = C.world.nestX, gap = C.ant.gap;
-      this.buildPath(this.paths[1]); this.buildPath(this.paths[-1]);
-      const dirOf = (a) => (a.dish ? t.dishes[a.dish].dir : (a.w.x >= nest ? 1 : -1));
-      for (const a of this.ants) {
-        a.dir = dirOf(a);
-        a.D = this.pathD(a.w.x, a.w.h, a.dir);
-        if (a.state === 'out' && !this.canEat(a, t.dishes[a.dish])) this.goHome(a);
-      }
-
-      // ----- at home: choose a trail -----
-      for (const a of this.ants) {
-        if (a.state !== 'home') continue;
-        a.dish = this.pickDish(a);
-        if (a.dish) { a.state = 'out'; a.seq = ++this.seq; a.biteT = 0; a.dir = t.dishes[a.dish].dir; a.D = this.pathD(a.w.x, a.w.h, a.dir); }
-        else { a.w.step(nest + ((a.seq % 7) - 3) * 2, dt); if (!a.w.moving) a.w.settle(dt); }
-      }
-
-      // ----- spots on the grid dishes: each worker takes its own pair of columns -----
-      for (const d of t.list) {
-        if (d.grapes) continue;
-        const outs = this.ants.filter((a) => a.state === 'out' && a.dish === d.key).sort((p, q) => p.seq - q.seq);
-        if (!outs.length) continue;
-        const pairs = Math.ceil(d.cols / 2);
-        const pairOk = (k, a) => d.edible(2 * k, a.s.str) || (2 * k + 1 < d.cols && d.edible(2 * k + 1, a.s.str));
-        const pairHard = (k) => d.topHard(2 * k) > 1 || d.topHard(2 * k + 1) > 1;
-        const owned = new Set();
-        for (const a of outs) if (a.pair != null && pairOk(a.pair, a) && !owned.has(a.pair)) owned.add(a.pair); else a.pair = null;
-        for (const a of outs) {
-          if (a.pair != null) continue;
-          const c = d.colAt(a.w.x);
-          const here = c < 0 ? ((a.w.x < d.x0) ? 0 : pairs - 1) : c >> 1;
-          const sol = a.kind === 'soldier';
-          let best = -1, bScore = Infinity;
-          for (let k = 0; k < pairs; k++) {
-            if (owned.has(k) || !pairOk(k, a)) continue;
-            const score = Math.abs(k - here) + (sol && !pairHard(k) ? 1000 : 0);
-            if (score < bScore) { bScore = score; best = k; }
-          }
-          if (best >= 0) { a.pair = best; owned.add(best); }
-        }
-      }
-
-      // ----- grapes: spread over the grapes -----
-      const gd = t.dishes.grapes;
-      for (const g of gd.grapes) g.ants = 0;
-      for (const a of this.ants) if (a.state === 'out' && a.dish === 'grapes' && a.grape && a.grape.hp > 0) a.grape.ants++; else a.grape = null;
-      for (const a of this.ants) {
-        if (a.state !== 'out' || a.dish !== 'grapes' || a.grape) continue;
-        let best = null, bs = Infinity;
-        for (const g of gd.grapes) {
-          if (g.hp <= 0) continue;
-          const s = g.ants * 400 + Math.abs(g.x - a.w.x);
-          if (s < bs) { bs = s; best = g; }
-        }
-        if (best) { a.grape = best; best.ants++; }
-      }
-
-      // ----- out-going ants walk single file per direction until they reach their dish -----
-      for (const dir of [1, -1]) {
-        const out = this.ants.filter((a) => a.state === 'out' && a.dir === dir).sort((p, q) => p.seq - q.seq);
-        let prevD = null;
-        for (const a of out) {
-          const d = t.dishes[a.dish], w = a.w;
-          const edge = dir > 0 ? d.x0 : d.x1;
-          const transit = dir * (w.x - edge) < 0;
-          let tx, biting = false;
-          if (d.grapes) {
-            const g = a.grape;
-            if (g) {
-              const r = d.rad(g), side = w.x < g.x ? -1 : 1;
-              tx = g.x + side * (r + w.reach + 0.5);
-              if (Math.abs(w.x - g.x) - r <= w.reach + 2 && w.h <= d.base + 2 * r + 1) biting = true;
-            } else tx = d.center;
-          } else if (a.pair != null) {
-            const c0 = 2 * a.pair, c1 = Math.min(d.cols - 1, c0 + 1);
-            const e0 = d.edible(c0, a.s.str), e1 = d.edible(c1, a.s.str);
-            a.tc = e0 && e1 ? (d.h[c1] > d.h[c0] ? c1 : c0) : (e0 ? c0 : c1);
-            tx = d.colCenter(a.tc);
-          } else tx = edge - dir * 6;
-
-          const lim = prevD !== null && transit ? prevD - gap - a.D : undefined;
-          if (!biting) { w.step(tx, dt, lim); if (!w.moving) w.settle(dt); }
-          else { w.settle(dt); w.flip = a.grape.x < w.x; }
-          a.D = this.pathD(w.x, w.h, dir);
-          prevD = transit ? a.D : null;
-
-          // bite while standing on its spot
-          const onSpot = !d.grapes && a.pair != null && !w.moving && Math.abs(w.x - tx) < 0.5 && Math.abs(w.h - d.surfaceAt(w.x)) < 0.5;
-          if (biting || onSpot) {
-            w.mode = 'walk';
-            a.biteT += dt;
-            if (a.biteT >= a.s.biteTime) {
-              a.biteT = 0;
-              const room = w.capacity - w.load;
-              const r = d.grapes ? d.bite(a.grape, Math.min(a.s.bite, room), Math.sign(a.grape.x - w.x) || dir)
-                : d.eat(a.tc, Math.min(a.s.bite, room), a.s.str);
-              if (r.n > 0) {
-                w.load += r.n; w.color = r.color;
-                if (Math.random() < (a.kind === 'soldier' ? 0.7 : 0.3)) this.spray(w.x + (w.flip ? -3 : 3), -w.h - 2, r.color, a.kind === 'soldier' ? 2 : 1);
-                if (Math.random() < 0.08) AF.audio.chomp();
-              }
-              if (w.load >= w.capacity || (r.n === 0 && w.load > 0)) this.goHome(a);
-            }
-          } else a.biteT = 0;
-        }
-      }
-
-      // ----- returning queue per direction (ordered by how close to the nest) -----
-      for (const dir of [1, -1]) {
-        const back = this.ants.filter((a) => a.state === 'back' && a.dir === dir).sort((p, q) => p.D - q.D || p.bseq - q.bseq);
-        let prevD = null;
-        for (const a of back) {
-          const w = a.w;
-          const lim = prevD === null ? Infinity : a.D - (prevD + gap);
-          const home = w.step(nest, dt, lim);
-          if (!w.moving) w.settle(dt);
-          a.D = this.pathD(w.x, w.h, dir);
-          prevD = a.D;
-          if (home) {
-            if (w.load > 0) { this.st.crumbs += w.load; this.antGain += w.load; w.load = 0; }
-            a.state = 'home'; a.dish = null; a.pair = null; a.grape = null;
-          }
-        }
-      }
-
-      for (const a of this.ants) a.w.render(dt);
+    updateScent(ms) {
+      const lv = this.st.up.scent, ar = this.scentArrow, sc = this.scout;
+      if (!lv) { ar.setVisible(false); return; }
+      const it = this.nearestItem(200 + 250 * lv);
+      if (!it) { ar.setVisible(false); return; }
+      const dx = it.x - sc.x, dy = -(it.h - sc.h), a = Math.atan2(dy, dx), r = 16;
+      ar.setVisible(true).setScale(Math.max(ms * 0.8, 0.15)).setRotation(a - Math.PI / 2)
+        .setPosition(sc.x + Math.cos(a) * r, -sc.h - 5 + Math.sin(a) * r).setAlpha(0.6 + 0.4 * Math.sin(this.time.now / 150));
     }
 
-    goHome(a) { a.state = 'back'; a.bseq = ++this.seq; a.pair = null; a.grape = null; }
+    // ---------- flags, sniffer ----------
+    drawFlagRange() {
+      const g = this.flagG, f = this.st.flag, cake = this.cake;
+      g.clear();
+      if (!f) return;
+      g.fillStyle(0xff5a8a, 0.55);
+      for (let x = f.x - f.r; x <= f.x + f.r; x += 4) g.fillCircle(x, -cake.surfaceAt(x) - 1, 0.9);
+    }
 
-    drawTrail() {
-      const g = this.trailG; g.clear();
-      const t = this.table, nest = C.world.nestX;
-      for (const d of t.list) {
-        if (!this.st.trails[d.key] || d.left <= 0) continue;
-        let end;
-        if (d.grapes) {
-          let best = null;
-          for (const gr of d.grapes) if (gr.hp > 0 && (best === null || Math.abs(gr.x - nest) < Math.abs(best - nest))) best = gr.x;
-          end = best - d.dir * (d.def.r + 4);
-        } else end = d.colCenter(d.headCol(d.dir));
-        const dir = d.dir;
-        g.fillStyle(d.key === 'bread' ? 0xffc27a : d.key === 'grapes' ? 0xe0b0ff : 0xffe08a, 0.85);
-        let prev = 0;
-        for (let x = nest + dir * 8; dir * (end - x) >= 0; x += dir * 5) {
-          const s = t.surfaceAt(x);
-          if (s > prev + 4) for (let y = prev + 3; y < s; y += 5) g.fillCircle(x - dir * 2.5, -y, 0.9);
-          g.fillCircle(x, -s - 0.8, 0.9);
-          prev = s;
-        }
-        // flag on the bite front
-        const top = t.surfaceAt(end);
-        g.fillStyle(0x5a2c00, 1).fillRect(end - 0.5, -top - 16, 1, 16);
-        g.fillStyle(0xffd25a, 1).fillTriangle(end + 0.5 * dir, -top - 16, end + 9 * dir, -top - 13, end + 0.5 * dir, -top - 10);
+    drawSniff() {
+      const g = this.sniffG, cake = this.cake, lv = this.st.up.sniffer + (this.sniffAll ? 99 : 0);
+      g.clear();
+      if (!lv) return;
+      const pulse = 0.35 + 0.25 * Math.sin(this.time.now / 250);
+      for (const it of cake.items) {
+        if (it.found) continue;
+        const depth = cake.h[it.c + 1] - (it.r + 2);
+        if (depth > 10 * lv) continue;
+        const def = C.items[it.key], col = (def.color[0] << 16) | (def.color[1] << 8) | def.color[2];
+        const x = cake.colCenter(it.c + 1), y = -(cake.base + (it.r + 1.5) * C.cell);
+        g.lineStyle(1.5, col, pulse + 0.2).strokeCircle(x, y, 10);
+        g.lineStyle(1, 0xffffff, pulse).strokeCircle(x, y, 13);
+      }
+    }
+
+    // ---------- main loop ----------
+    update(time, delta) {
+      const raw = Math.min(delta / 1000, 0.05);
+      const st = this.st;
+      let steps = this.devSpeed > 1 ? Math.min(this.devSpeed, 20) : 1;
+      for (let i = 0; i < steps; i++) this.tick(raw);
+      this.cake.flush();
+      this.updateCamera(raw, false);
+      this.drawT += raw;
+      if (this.drawT > 0.25) { this.drawT = 0; this.drawFlagRange(); this.drawSniff(); }
+      this.uiT += raw;
+      if (this.uiT > 0.1) { this.uiT = 0; this.refreshUI(); }
+      this.saveT += raw;
+      if (this.saveT > 3) { this.saveT = 0; this.persist(); }
+      if (!this.selSquad || this.ants.indexOf(this.selSquad) < 0) this.selRing.setVisible(false);
+      if (st.flag) {
+        const f = st.flag;
+        this.flagImg.setVisible(true).setPosition(f.x, -this.cake.surfaceAt(f.x)).setScale(16 / 48).setAlpha(f.t < 3 ? 0.4 + 0.6 * ((this.time.now / 150) & 1) : 1);
+      } else this.flagImg.setVisible(false);
+    }
+
+    tick(dt) {
+      const st = this.st;
+      if (!st.won) st.time += dt;
+      for (const k of Object.keys(st.boosts)) if (st.boosts[k] > 0) st.boosts[k] = Math.max(0, st.boosts[k] - dt);
+      if (st.flag) { st.flag.t -= dt; if (st.flag.t <= 0) { st.flag = null; this.drawFlagRange(); } }
+      this.updateScout(dt);
+      this.updateAnts(dt);
+      this.gainT += dt;
+      if (this.gainT > 1) { if (this.gain > 0) this.floater(C.world.nestX + 14, -10, '+' + AF.fmt(this.gain), 13); this.gain = 0; this.gainT = 0; }
+      if (!st.won && this.cake.left <= 0) {
+        st.won = true;
+        this.persist();
+        AF.audio.blip(990);
+        this.time.delayedCall(600, () => AF.ui.showWin(st.time));
       }
     }
 
@@ -549,46 +654,45 @@
     }
 
     ring(x, y) {
-      const r = this.add.image(x, y, 'ring').setDepth(25).setTint(0xffd25a).setScale(0.1);
-      this.tweens.add({ targets: r, scale: 0.6, alpha: 0, duration: 450, ease: 'Cubic.out', onComplete: () => r.destroy() });
+      const z = this.cameras.main.zoom, s = Math.max(0.6, (40 * AF.DPR) / (64 * z));
+      const r = this.add.image(x, y, 'ring').setDepth(25).setTint(0xffd25a).setScale(s * 0.15);
+      this.tweens.add({ targets: r, scale: s, alpha: 0, duration: 500, ease: 'Cubic.out', onComplete: () => r.destroy() });
     }
 
     // ---------- camera ----------
-    // Starts close on the scout; zooms out to show the nest and every dish with a trail as the colony grows.
+    // Starts close on the scout and eases out to frame the colony's work as it grows; +/- and the wheel zoom.
     updateCamera(dt, instant) {
-      const cam = this.cameras.main, k = C.camera, DPR = AF.DPR;
+      const cam = this.cameras.main, k = C.camera, DPR = AF.DPR, cake = this.cake;
       const W = this.scale.width, H = this.scale.height;
       const cssW = W / DPR, cssH = H / DPR;
       const portrait = cssH > cssW;
-      const groundCss = Math.max(80, (cssH - AF.ui.barHeight()) * (portrait ? 0.72 : 0.8));
+      const panel = AF.ui.panelWidth();
+      const viewW = Math.max(200, cssW - panel);
+      const groundCss = Math.max(80, (cssH - AF.ui.barHeight()) * (portrait ? 0.72 : 0.85));
 
-      let fl = C.world.nestX - 70, fr = C.world.nestX + 70, ft = 60;
-      for (const d of this.table.list) {
-        if (!this.st.trails[d.key]) continue;
-        fl = Math.min(fl, d.plateL - 20); fr = Math.max(fr, d.plateR + 20);
-        ft = Math.max(ft, d.grapes ? d.base + 2 * d.def.r + 30 : d.base + d.rows * d.cell + 30);
-      }
-      // portrait screens are narrow: frame the start by width so the scout is big, not a speck
-      const zStart = portrait ? Math.max(2.2, cssW / k.portraitDiv) : Math.max(k.minStartZoom, Math.min(cssW, cssH) / k.startDiv);
-      const zFit = Math.min(cssW / (fr - fl), (groundCss * 0.92) / ft);
-      const units = this.count('ant') + 2 * this.count('soldier');
-      const p = this.anyTrail() ? 0.15 + 0.85 * Math.pow(Math.min(1, units / k.antsForFullZoom), 0.8) : 0;
-      const zT = Math.min(zStart, zStart * Math.pow(zFit / zStart, p)) * DPR;
+      let fr = C.world.nestX + 80, ft = 60;
+      for (const a of this.ants) fr = Math.max(fr, a.w.x + 40);
+      fr = Math.max(fr, this.scout.x + 40);
+      fr = Math.min(fr, cake.x1 + 60);
+      const fl = C.world.nestX - 60;
+      for (let c = 0; c < cake.cols; c += 8) if (cake.colCenter(c) <= fr) ft = Math.max(ft, cake.topH(c) + 30);
+      const zStart = portrait ? Math.max(2.2, cssW / k.portraitDiv) : Math.max(k.minStartZoom, Math.min(viewW, cssH) / k.startDiv);
+      const zFit = Math.min(viewW / (fr - fl), (groundCss * 0.92) / ft);
+      const units = this.units();
+      const p = units > 0 ? 0.25 + 0.75 * Math.pow(Math.min(1, units / 40), 0.7) : 0;
+      const zT = Math.min(zStart, zStart * Math.pow(zFit / zStart, p)) * this.uz * DPR;
 
       if (instant || !this.zCur) this.zCur = zT;
-      else this.zCur += (zT - this.zCur) * Math.min(1, dt * 2.5);
+      else this.zCur += (zT - this.zCur) * Math.min(1, dt * 3);
       const z = this.zCur;
 
-      // horizontal: follow the scout, drifting to the whole-scene view as the colony grows
-      const half = W / 2 / z, lead = Math.min(k.lead, half * 0.35);
-      let cx = Phaser.Math.Linear(this.scout.x + lead * (this.scout.flip ? -1 : 1), (fl + fr) / 2, p);
-      // keep the scout on screen
-      cx = Phaser.Math.Clamp(cx, this.scout.x - half * 0.8, this.scout.x + half * 0.8);
-      if (C.world.right - C.world.left <= 2 * half) cx = (C.world.left + C.world.right) / 2;
-      else cx = Phaser.Math.Clamp(cx, C.world.left + half, C.world.right - half);
-      // vertical: table line at groundCss, but lift the view if the scout climbs high
+      const half = (viewW * DPR) / 2 / z, lead = Math.min(k.lead, half * 0.35);
+      let cx = Phaser.Math.Linear(this.scout.x + lead * (this.scout.flip ? -1 : 1), (fl + fr) / 2, p * Math.min(1, this.uz));
+      cx = clamp(cx, this.scout.x - half * 0.8, this.scout.x + half * 0.8);
+      cx = clamp(cx, C.world.left + half, Math.max(C.world.left + half, C.world.right - half));
+      cx += (panel * DPR) / z / 2; // the panel covers the right: shift so the view centers left of it
       let cy = (H / 2 - groundCss * DPR) / z;
-      cy = Math.min(cy, -this.scout.h + (0.2 * H) / z);
+      cy = Math.min(cy, -this.scout.h + (0.25 * H) / z);
 
       if (instant || this.cx === undefined) { this.cx = cx; this.cy = cy; }
       else {
@@ -599,37 +703,93 @@
       cam.centerOn(this.cx, this.cy);
     }
 
-    // ---------- UI / save ----------
+    // ---------- UI ----------
+    rows() {
+      const st = this.st, rows = [], up = st.up;
+      const lvTxt = (lv, start) => (lv > start || start > 0 ? 'Lv ' + lv : '');
+      const U = (tab, id, title, desc, show) => rows.push({ tab, id, title, desc, lv: lvTxt(up[id], C.up[id].start), price: this.upPrice(id), show });
+      const sc = this.scoutCap();
+      U('scout', 'legs', 'Legs', `Scout walks and climbs faster (+15% each)`);
+      U('scout', 'jaws', 'Jaws', `Bite harder and carry more (${Math.round(sc)} now)`);
+      U('scout', 'bigbite', 'Big bite', up.bigbite ? `B / CHOMP: bite a chunk straight into the bank (every ${C.scout.chompCd}s)` : 'Unlock a huge chomp (B key)');
+      U('scout', 'aura', 'Leader aura', `Ants near the scout work ${up.aura ? '+' + up.aura * 10 + '%' : 'faster'}`);
+      U('scout', 'scent', 'Treat scent', 'An arrow points to the nearest hidden treat' + (up.scent ? ` (range ${200 + 250 * up.scent})` : ''));
+      U('scout', 'rally', 'Rally', up.rally ? `R / RALLY: plant a big flag where the scout stands` : 'Call ants to the scout (R key)');
+      const wn = ['Hop (▲ / Up)', 'Glide (hold ▲)', 'Fly (▲ ▼)'];
+      rows.push({ tab: 'scout', id: 'wings', title: 'Wings', desc: up.wings < 3 ? 'Next: ' + wn[up.wings] : 'Fly anywhere with ▲ ▼', lv: up.wings ? 'Lv ' + up.wings : '', price: this.upPrice('wings') });
+
+      const cap = this.nestCap(), used = this.units();
+      for (const t of TYPES) {
+        const T = C.types[t];
+        if (!this.unlocked(t)) continue;
+        const s = this.stats(t), n = st.counts[t];
+        const what = { worker: 'Soft layers. Weak on chocolate and biscuit', strong: 'Cracks chocolate and biscuit 3× faster', flying: 'Flies to the top: frosting, sprinkles, candles', squad: `${this.squadMembers()} ants dig one spot, ignore sticky jam. Tap it, then tap the cake` }[t];
+        rows.push({ tab: 'ants', id: 'h_' + t, head: `${T.name}s <span>${n}${T.max ? '/' + T.max : ''}</span>` });
+        const full = used + (t === 'squad' ? 5 : 1) > cap;
+        rows.push({ tab: 'ants', id: 'hire.' + t, title: 'Hire ' + T.name.toLowerCase(), desc: what, lv: '', price: T.max && n >= T.max ? null : this.hirePrice(t), block: full ? 'Nest full' : null });
+        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: `${Math.round(s.speed)} walk`, lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed') });
+        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: `${s.carry} crumbs a trip`, lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry') });
+        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: `${(Math.round(s.bite * 10) / 10)} bite power`, lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite') });
+      }
+
+      U('colony', 'nest', 'Bigger nest', `Room for ${cap} ants (${cap + C.nestPer} next)`);
+      U('colony', 'value', 'Crumb value', `Every crumb is worth ×${this.valMul().toFixed(2)}`);
+      const ul = (t, desc) => rows.push({ tab: 'colony', id: 'unlock.' + t, title: 'Unlock ' + C.types[t].name.toLowerCase() + 's', desc, lv: '', price: this.upPrice('unlock.' + t), block: up['unlock.' + t] ? 'Owned' : null });
+      ul('strong', 'They crack the hard chocolate shell and biscuit');
+      ul('flying', 'They fly straight to the top, sprinkles and candles');
+      ul('squad', 'Teams of 5 that dig where you send them');
+
+      U('tools', 'flagPow', 'Flag power', `Tap the cake to plant a flag. Ants within ${this.flagRadius()} go there`);
+      U('tools', 'flagTime', 'Flag time', `A flag lasts ${this.flagTime()}s`);
+      U('tools', 'squadSize', 'Squad size', `${this.squadMembers()} ants in each squad`, this.unlocked('squad'));
+      U('tools', 'trails', 'Scent trails', `Walking ants +${10 * (up.trails - 1)}% speed`);
+      U('tools', 'sniffer', 'Sniffer', up.sniffer ? `Shows treats up to ${10 * up.sniffer} cells deep` : 'Reveal hidden treats near the surface');
+      return rows;
+    }
+
     refreshUI() {
-      const st = this.st, t = this.table, pr = this.prices(), nt = this.nextTrail();
+      const st = this.st, cake = this.cake, sc = this.scout, touch = AF.ui.touch;
+      const b = st.boosts, bs = [];
+      for (const k of ['speed', 'bite', 'carry']) if (b[k] > 0) bs.push(`${cap1(k)} ×${C.boosts[k]} <b>${Math.ceil(b[k])}s</b>`);
+      const units = this.units();
+      let kind = null;
+      const c = cake.colAt(sc.x);
+      if (c >= 0 && cake.h[c] > 0 && Math.abs(sc.h - cake.topH(c)) < 3) kind = cake.topKind(c);
+      kind = kind || this.lastKind;
+      const L = kind && C.layers[kind];
       AF.ui.update({
         crumbs: st.crumbs,
-        eaten: t.left > 0 ? Math.min(99, Math.floor((1 - t.left / t.total) * 100)) : 100,
-        ants: this.count('ant'), soldiers: this.count('soldier'),
-        jaws: st.jaws, up: st.up, prices: pr, nextTrail: nt, trails: st.trails, time: st.time,
+        eaten: cake.left > 0 ? Math.min(99, Math.floor((1 - cake.left / cake.total) * 100)) : 100,
+        colony: units ? `Ants ${units}/${this.nestCap()}` : '',
+        layer: L ? `${L.name}${L.sticky ? ' (sticky)' : L.hard >= 3 ? ' (hard)' : ''}` : '',
+        boosts: bs.join(' · '),
+        time: st.time,
+        rows: this.rows(),
+        pad: { up: st.up.wings > 0, chomp: st.up.bigbite > 0, rally: st.up.rally > 0 },
       });
-      const touch = AF.ui.touch, sc = this.scout, b = t.dishes.bread;
+      const dn = document.querySelector('#pad [data-k="down"]'); if (dn) dn.hidden = st.up.wings < 3;
+
       let h = '';
+      const hard = this.lastKind === 'chocolate' || this.lastKind === 'biscuit';
       if (st.won) h = '';
-      else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶ up onto the cake, then press BITE' : 'Walk with ← → up onto the cake, then bite with Space';
+      else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶ to the Giant Cake, climb it and press BITE' : 'Walk with ← → to the Giant Cake, climb it and bite with Space';
       else if (sc.load >= sc.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
-      else if (!st.trails.cake) h = st.crumbs >= K.trails.cake ? 'Build a trail so other ants can join in!' : 'Stronger jaws bite more · a trail costs ' + K.trails.cake;
-      else if (this.count('ant') < 3) h = 'Hire more ants. They march the trail on their own';
-      else if (!st.trails.bread && st.crumbs >= K.trails.bread) h = 'Build a trail to the bread on the left!';
-      else if (st.trails.bread && this.count('soldier') === 0 && b.left > 0) h = 'Bread crust is too hard for workers. Hire a soldier ant!';
-      else if (st.trails.bread && !st.trails.grapes && st.crumbs >= K.trails.grapes) h = 'Build a trail to the grapes on the right!';
+      else if (units === 0) h = st.crumbs >= this.hirePrice('worker') ? 'Hire a worker ant in Upgrades → Ants' : 'Bring crumbs home to hire worker ants';
+      else if (!st.flagUsed && units >= 2) h = 'Tap the cake to plant a pheromone flag: ants dig there';
+      else if (hard && !this.unlocked('strong')) h = 'The chocolate shell is hard. Unlock strong ants in Colony';
       AF.ui.hint(h);
     }
 
+    // ---------- save / dev ----------
     persist() {
       if (this.resetting) return;
-      const st = this.st;
+      const st = this.st, sc = this.scout;
       AF.save.write({
-        crumbs: st.crumbs, jaws: st.jaws, trails: st.trails, up: st.up,
-        ants: this.count('ant'), soldiers: this.count('soldier'), time: st.time, won: st.won, hint: st.hint,
-        scoutX: Math.round(this.scout.x * 10) / 10, scoutH: Math.round(this.scout.h * 10) / 10,
-        scoutLoad: this.scout.load, dishes: this.table.encode(),
+        v: 3, crumbs: st.crumbs, time: st.time, won: st.won, hint: st.hint, flagUsed: st.flagUsed,
+        up: st.up, tu: st.tu, counts: st.counts, boosts: st.boosts,
+        scoutX: Math.round(sc.x * 10) / 10, scoutH: Math.round(sc.h * 10) / 10, scoutLoad: sc.load, scoutVal: sc.loadVal,
+        cake: this.cake.encode(),
       });
     }
 
@@ -637,6 +797,23 @@
       this.resetting = true;
       AF.save.clear();
       location.reload();
+    }
+
+    dev(cmd, arg) {
+      const st = this.st;
+      if (cmd === 'speed') this.devSpeed = arg;
+      else if (cmd === 'crumbs') st.crumbs += arg;
+      else if (cmd === 'layer') {
+        this.cake.cutTo(arg);
+        for (const it of this.cake.items) if (it.r + 1 >= arg) it.found = true;
+      } else if (cmd === 'unlock') {
+        for (const t of ['strong', 'flying', 'squad']) st.up['unlock.' + t] = 1;
+        st.up.wings = 3; st.up.bigbite = Math.max(1, st.up.bigbite); st.up.rally = Math.max(1, st.up.rally); st.up.scent = Math.max(1, st.up.scent);
+        st.up.nest = Math.max(st.up.nest, 10);
+        this.applyScoutLook();
+      } else if (cmd === 'sniff') this.sniffAll = !this.sniffAll;
+      AF.ui.toast('dev: ' + cmd + (arg !== undefined ? ' ' + arg : ''));
+      this.refreshUI();
     }
   }
 
