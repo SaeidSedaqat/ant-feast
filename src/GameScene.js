@@ -31,7 +31,7 @@
       for (const d of this.table.list) d.drawPlate(plates);
 
       const sx = typeof s.scoutX === 'number' && isFinite(s.scoutX) ? Phaser.Math.Clamp(s.scoutX, C.world.left, C.world.right) : 30;
-      const sc = this.scout = new AF.Walker(this, this.table, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20 });
+      const sc = this.scout = new AF.Walker(this, this.table, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20, foot: 3.5 });
       sc.load = Math.max(0, s.scoutLoad | 0);
       sc.capacity = this.scoutCap();
       if (typeof s.scoutH === 'number' && isFinite(s.scoutH)) sc.h = Math.max(this.table.surfaceAt(sc.x), s.scoutH);
@@ -63,6 +63,7 @@
       if (this.st.won) AF.ui.showWin(this.st.time);
       this.refreshUI();
       this.updateCamera(0, true);
+      if (window.AFLoaded) this.time.delayedCall(60, () => window.AFLoaded());
     }
 
     anyTrail() { const t = this.st.trails; return t.cake || t.bread || t.grapes; }
@@ -332,8 +333,9 @@
       const u = dir * (x - C.world.nestX);
       if (u < p.o) return Math.max(0, u) + h;
       const k = Math.min(p.n - 1, Math.floor((u - p.o) / cell)), within = u - p.o - cell * k, s = p.S[k];
-      if (h > s + 0.5) {
-        if (cell - within < 2 && p.S[k + 1] >= h - 0.5) return p.L[k + 1] + (h - s); // climbing into the next slot
+      if (h > s + 0.5) { // on a wall: the far wall (into the next slot) or the near one (back toward the nest)
+        const far = p.S[k + 1] >= h - 0.5, near = p.P[k] >= h - 0.5;
+        if (far && (!near || cell - within < within)) return p.L[k + 1] + (h - s); // climbing into the next slot
         return p.L[k] + Math.max(0, p.P[k] - h) + within; // dropping into this slot
       }
       return p.L[k] + Math.abs(s - p.P[k]) + within;
@@ -566,7 +568,8 @@
         fl = Math.min(fl, d.plateL - 20); fr = Math.max(fr, d.plateR + 20);
         ft = Math.max(ft, d.grapes ? d.base + 2 * d.def.r + 30 : d.base + d.rows * d.cell + 30);
       }
-      const zStart = Math.max(k.minStartZoom, Math.min(cssW, cssH) / k.startDiv);
+      // portrait screens are narrow: frame the start by width so the scout is big, not a speck
+      const zStart = portrait ? Math.max(2.2, cssW / k.portraitDiv) : Math.max(k.minStartZoom, Math.min(cssW, cssH) / k.startDiv);
       const zFit = Math.min(cssW / (fr - fl), (groundCss * 0.92) / ft);
       const units = this.count('ant') + 2 * this.count('soldier');
       const p = this.anyTrail() ? 0.15 + 0.85 * Math.pow(Math.min(1, units / k.antsForFullZoom), 0.8) : 0;
@@ -577,8 +580,8 @@
       const z = this.zCur;
 
       // horizontal: follow the scout, drifting to the whole-scene view as the colony grows
-      let cx = Phaser.Math.Linear(this.scout.x + k.lead * (this.scout.flip ? -1 : 1), (fl + fr) / 2, p);
-      const half = W / 2 / z;
+      const half = W / 2 / z, lead = Math.min(k.lead, half * 0.35);
+      let cx = Phaser.Math.Linear(this.scout.x + lead * (this.scout.flip ? -1 : 1), (fl + fr) / 2, p);
       // keep the scout on screen
       cx = Phaser.Math.Clamp(cx, this.scout.x - half * 0.8, this.scout.x + half * 0.8);
       if (C.world.right - C.world.left <= 2 * half) cx = (C.world.left + C.world.right) / 2;

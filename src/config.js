@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.96',
+  version: '0.0.106',
   saveKey: 'antfeast-save-v2',
   display: { maxPixelRatio: 2 },
 
@@ -34,6 +34,7 @@ AF.config = {
 
   camera: {
     startDiv: 260,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
+    portraitDiv: 150,   // portrait: start zoom = screen width / portraitDiv (closer on the scout)
     minStartZoom: 1.6,
     lead: 70,           // camera looks this far ahead of the scout (toward the food) at the start
     antsForFullZoom: 40,
