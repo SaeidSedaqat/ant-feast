@@ -146,7 +146,7 @@
       if (t === 'squad') { bite *= this.squadMembers(); carry *= this.squadMembers(); }
       return { speed: T.speed * sp, climb: T.climb * sp, bite, carry, biteTime: T.biteTime };
     }
-    scoutCap() { return C.scout.capPerJaw * this.st.up.jaws * this.boostMul('carry'); }
+    scoutCap(lv) { return (C.scout.cap + C.scout.capPerJaw * ((lv || this.st.up.jaws) - 1)) * this.boostMul('carry'); }
 
     upPrice(key) {
       const u = C.up[key], lv = this.st.up[key];
@@ -563,9 +563,12 @@
       const st = this.st, rows = [], up = st.up;
       const lvTxt = (lv, start) => (lv > start || start > 0 ? 'Lv ' + lv : '');
       const U = (tab, id, title, desc, show) => rows.push({ tab, id, title, desc, lv: lvTxt(up[id], C.up[id].start), price: this.upPrice(id), show });
-      const sc = this.scoutCap();
-      U('scout', 'legs', 'Legs', `Scout walks and climbs faster (+15% each)`);
-      U('scout', 'jaws', 'Jaws', `Bite harder and carry more (${Math.round(sc)} now)`);
+      // every row reads "+X each, Y now"; a maxed row shows only the "now" part
+      const D = (each, now, maxed) => maxed ? now + ' now' : `+${each} each, ${now} now`;
+      const r1 = (v) => String(Math.round(v * 10) / 10);
+      const lm = (id) => up[id] >= C.up[id].max;
+      U('scout', 'legs', 'Legs', 'Walk and climb faster. ' + D('15%', Math.round(100 + 15 * (up.legs - 1)) + '%', lm('legs')));
+      U('scout', 'jaws', 'Jaws', 'Bite harder, carry more. ' + D(Math.round(this.scoutCap(up.jaws + 1) - this.scoutCap()), Math.round(this.scoutCap()), lm('jaws')));
 
       const cap = this.nestCap(), used = this.units();
       for (const t of TYPES) {
@@ -576,13 +579,14 @@
         rows.push({ tab: 'ants', id: 'h_' + t, head: `${T.name}s <span>${n}${T.max ? '/' + T.max : ''}</span>` });
         const full = used + (t === 'squad' ? 5 : 1) > cap;
         rows.push({ tab: 'ants', id: 'hire.' + t, title: 'Hire ' + T.name.toLowerCase(), desc: what, lv: '', price: T.max && n >= T.max ? null : this.hirePrice(t), block: full ? 'Nest full' : null });
-        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: `${Math.round(s.speed)} walk`, lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed') });
-        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: `${s.carry} crumbs a trip`, lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry') });
-        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: `${(Math.round(s.bite * 10) / 10)} bite power`, lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite') });
+        const tm = (k) => st.tu[t][k] >= C.typeUp[k].max, mem = t === 'squad' ? this.squadMembers() : 1, bm = (k) => this.boostMul(k);
+        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: 'Walk speed. ' + D(Math.round(T.speed * 0.2 * bm('speed')), Math.round(s.speed), tm('speed')), lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed') });
+        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: 'Crumbs a trip. ' + D(r1(T.carry * 0.6 * bm('carry') * mem), s.carry, tm('carry')), lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry') });
+        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: 'Bite power. ' + D(r1(T.bite * 0.5 * bm('bite') * mem), r1(s.bite), tm('bite')), lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite') });
       }
 
-      U('colony', 'nest', 'Bigger nest', `Room for ${cap} ants (${cap + C.nestPer} next)`);
-      U('colony', 'value', 'Crumb value', `Every crumb is worth ×${this.valMul().toFixed(2)}`);
+      U('colony', 'nest', 'Bigger nest', 'Ant room. ' + D(C.nestPer, cap, false));
+      U('colony', 'value', 'Crumb value', 'Crumb worth. ' + D('×0.25', '×' + this.valMul().toFixed(2), false));
       const ul = (t, desc) => rows.push({ tab: 'colony', id: 'unlock.' + t, title: 'Unlock ' + C.types[t].name.toLowerCase() + 's', desc, lv: '', price: this.upPrice('unlock.' + t), show: !up['unlock.' + t] }); // owned unlocks leave the list
       ul('strong', 'They crack the hard chocolate shell and biscuit');
       ul('squad', 'Teams of 5 that dig where you send them');
