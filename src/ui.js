@@ -1,4 +1,4 @@
-// HTML overlay: HUD, the upgrade side panel (tabs), pop-up toasts, phone pad and the ?dev=1 panel.
+// HTML overlay: HUD, the upgrade side panel (one list, left side), pop-up toasts, phone pad and the ?dev=1 panel.
 (function () {
   const $ = (id) => document.getElementById(id);
   const cache = {};
@@ -12,7 +12,7 @@
     if (n >= 1e5) return Math.floor(n / 1e3) + 'K';
     return n.toLocaleString();
   };
-  const TABS = ['scout', 'ants', 'colony'];
+  const SECTIONS = { scout: 'Scout', ants: 'Ants', colony: 'Colony' };
 
   AF.fmt = fmt;
   AF.ui = {
@@ -28,8 +28,6 @@
       $('bZin').onclick = () => scene.zoomBy(1.25);
       $('bZout').onclick = () => scene.zoomBy(0.8);
       $('bPanel').onclick = () => this.openPanel(!this.panelOpen);
-      TABS.forEach((t) => { $('t_' + t).onclick = () => this.tab(t); });
-      this.tab('scout');
       this.openPanel(window.innerWidth >= 900 && !(window.matchMedia && matchMedia('(pointer: coarse)').matches));
       // keep keyboard focus off buttons so Space bites instead of re-clicking
       document.addEventListener('mouseup', (e) => { if (e.target.closest && e.target.closest('button')) setTimeout(() => document.activeElement && document.activeElement.blur && document.activeElement.blur(), 0); });
@@ -42,11 +40,19 @@
       $('side').hidden = !on;
       $('bPanel').classList.toggle('on', on);
     },
-    tab(t) {
-      this.cur = t;
-      TABS.forEach((k) => { $('t_' + k).classList.toggle('on', k === t); $('p_' + k).hidden = k !== t; });
+    // one section (title + rows) per kind of upgrade, made in a fixed order so late rows land in their own section
+    group(t) {
+      if (!this.groups) {
+        this.groups = {};
+        for (const k in SECTIONS) {
+          const h = document.createElement("div"); h.className = "sec"; h.textContent = SECTIONS[k];
+          const g = document.createElement("div");
+          $("p_all").append(h, g); this.groups[k] = g;
+        }
+      }
+      return this.groups[t] || this.groups.colony;
     },
-    // css px of the screen's right side covered by the panel (the camera shifts the view left of it)
+    // css px of the screen's left side covered by the panel (the camera shifts the view right of it)
     panelWidth() {
       if (!this.panelOpen) return 0;
       const r = $('side').getBoundingClientRect();
@@ -88,6 +94,9 @@
       for (const [t, f] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = f; d.appendChild(b); }
     },
 
+    // bottom edge (css px) of the top bar
+    topHeight() { return $('top').getBoundingClientRect().bottom; },
+
     // height (css px) taken by the phone pad at the bottom
     barHeight() {
       const p = $('pad');
@@ -97,14 +106,14 @@
 
     // rows: {tab, id, head} | {tab, id, title, desc, lv, price (null = max), block (text), show}
     renderRows(rows, crumbs) {
-      const can = {};
+      let any = 0;
       for (const r of rows) {
         let el = this.rows[r.id];
         if (!el) {
           el = document.createElement(r.head ? 'div' : 'button');
           el.className = r.head ? 'hd' : 'up';
           if (!r.head) el.onclick = () => this.scene.buy(r.id);
-          $('p_' + r.tab).appendChild(el);
+          this.group(r.tab).appendChild(el);
           this.rows[r.id] = el;
         }
         el.hidden = r.show === false;
@@ -114,10 +123,8 @@
         set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em><small>${r.desc}</small></span>${right}`);
         const off = !!r.block || r.price == null || crumbs < r.price;
         el.disabled = off;
-        if (!off) can[r.tab] = (can[r.tab] || 0) + 1;
+        if (!off) any++;
       }
-      for (const t of TABS) set($('t_' + t),'tb' + t, `${t[0].toUpperCase() + t.slice(1)}${can[t] ? ` <i class="n">${can[t]}</i>` : ''}`);
-      const any = TABS.reduce((s, t) => s + (can[t] || 0), 0);
       set($('bPanel'), 'bp', `Upgrades${any ? ` <i class="n">${any}</i>` : ''}`);
     },
 

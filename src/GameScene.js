@@ -130,7 +130,7 @@
       }
     }
 
-    zoomBy(f) { const za = this.zAuto || 1; this.uz = clamp(this.uz * f, 0.15, Math.max(1, C.camera.maxZoom / za)); } // zoom-in tops out at maxZoom on screen (or the auto view, if that is closer)
+    zoomBy(f) { const za = this.zAuto || 1; this.uz = clamp(this.uz * f, this.uzMin || 0.15, Math.max(1, C.camera.maxZoom / za)); } // zoom-in tops out at maxZoom on screen (or the auto view, if that is closer); zoom-out stops where the whole cake fits
 
     // ---------- stats ----------
     boostMul(k) { return this.st.boosts[k] > 0 ? C.boosts[k] : 1; }
@@ -245,6 +245,18 @@
         for (let d = 0; d < 6; d++) for (const c of [a.target - d, a.target + d]) if (c >= 0 && c < cols && H[c] > 0) { a.target = c; return c; }
         a.target = null;
       }
+      // like a real ant: go back to the spot that fed it last trip (or the nearest level spot beside it) while nobody else holds it
+      if (a.tc >= 0) {
+        const own = a.tc >> 1;
+        let near = -1, nd = 99;
+        for (let d = -4; d <= 4; d++) {
+          const c = a.tc + d;
+          if (c < 0 || c >= cols || H[c] === 0 || !this.canEat(t, c) || this.levelSpot(c, t) !== c) continue;
+          if (this.claim[c >> 1] - ((c >> 1) === own ? 1 : 0) > 0 || Math.abs(d) >= nd) continue;
+          near = c; nd = Math.abs(d);
+        }
+        if (near >= 0) return near;
+      }
       let lo = 0, hi = cols - 1;
       const stepC = Math.max(1, Math.floor((hi - lo + 1) / 160));
       const mine = a.tc >= 0 ? a.tc >> 1 : -1;
@@ -283,6 +295,12 @@
 
         if (a.state === 'home') { let tried = false; if (this.exitT <= 0) { tried = true; this.retarget(a); if (a.state !== 'home') this.exitT = C.world.exitGap; } if (a.state === 'home') { if (tried && a.type === 'worker') idle++; w.moving = false; w.render(dt); this.drawMembers(a); continue; } }
         if (a.state === 'out' && (a.tc < 0 || cake.h[a.tc] === 0 || !this.canEat(a.type, a.tc))) this.retarget(a);
+        // on the way out, the first free level spot the ant walks over is good enough: stop and eat there
+        if (a.state === 'out' && !(a.type === 'squad' && a.target != null)) {
+          const c = cake.colAt(w.x);
+          if (c >= 0 && c !== a.tc && cake.h[c] > 0 && Math.abs(w.h - cake.topH(c)) < 1 && this.canEat(a.type, c) && this.levelSpot(c, a.type) === c
+            && this.claim[c >> 1] - ((a.tc >> 1) === (c >> 1) ? 1 : 0) === 0) this.setTarget(a, c);
+        }
 
         if (a.state === 'out') {
           if (w.step(cake.colCenter(a.tc), dt)) { a.state = 'dig'; a.biteT = 0; }
@@ -318,8 +336,8 @@
       this.idleWorkers = idle;
     }
 
+    // the ant keeps its claim while it carries the load home, so its spot is still free when it comes back
     goHome(a) {
-      this.setTarget(a, -1);
       a.state = 'back';
     }
 
@@ -492,6 +510,7 @@
       const panel = AF.ui.panelWidth();
       const viewW = Math.max(200, cssW - panel);
       const groundCss = Math.max(80, (cssH - AF.ui.barHeight()) * (portrait ? 0.72 : 0.85));
+      const topCss = AF.ui.topHeight(), playBot = cssH - AF.ui.barHeight();
 
       let fr = C.world.nestX + 80, ft = 60;
       for (const a of this.ants) fr = Math.max(fr, a.w.x + 40);
@@ -506,17 +525,30 @@
       // auto zoom never goes so far out that ants become specks; the − button can still go further
       const zAuto = Math.max(Math.min(zStart, zStart * Math.pow(zFit / zStart, p)), Math.min(zStart, 1.1));
       this.zAuto = zAuto;
+      // the farthest zoom-out shows the whole cake, centered in the play area (beside the panel, between the top bar and the pad)
+      let cakeTop = 0;
+      for (let c = 0; c < cake.cols; c += 4) cakeTop = Math.max(cakeTop, cake.topH(c));
+      const zAll = Math.min(viewW / (cake.x1 - cake.x0 + 80), ((playBot - topCss) * 0.88) / Math.max(60, cakeTop + 20));
+      this.uzMin = Math.min(1, zAll / zAuto);
+      if (this.uz < this.uzMin) this.uz = this.uzMin;
+      const whole = zAuto * this.uz <= zAll * 1.001;
       const zT = Math.min(zAuto * this.uz, Math.max(zAuto, k.maxZoom)) * DPR;
 
       if (instant || !this.zCur) this.zCur = zT;
       else this.zCur += (zT - this.zCur) * Math.min(1, dt * 3);
       const z = this.zCur;
 
-      // the scout stays in the middle of the visible area
-      let cx = this.scout.x;
-      cx += (panel * DPR) / z / 2; // the panel covers the right: shift so the view centers left of it
-      let cy = (H / 2 - groundCss * DPR) / z;
-      cy = Math.min(cy, -this.scout.h + (0.25 * H) / z);
+      // the scout stays in the middle of the visible area (or, zoomed all the way out, the cake does)
+      let cx, cy;
+      if (whole) {
+        cx = (cake.x0 + cake.x1) / 2;
+        cy = -cakeTop / 2 - (((topCss + playBot) / 2) * DPR - H / 2) / z;
+      } else {
+        cx = this.scout.x;
+        cy = (H / 2 - groundCss * DPR) / z;
+        cy = Math.min(cy, -this.scout.h + (0.25 * H) / z);
+      }
+      cx -= (panel * DPR) / z / 2; // the panel covers the left: shift so the view centers right of it
 
       if (instant || this.cx === undefined) { this.cx = cx; this.cy = cy; }
       else {
