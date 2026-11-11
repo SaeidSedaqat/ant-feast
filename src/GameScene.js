@@ -146,7 +146,10 @@
       if (t === 'squad') { bite *= this.squadMembers(); carry *= this.squadMembers(); }
       return { speed: T.speed * sp, climb: T.climb * sp, bite, carry, biteTime: T.biteTime };
     }
-    scoutCap(lv) { return (C.scout.cap + C.scout.capPerJaw * ((lv || this.st.up.jaws) - 1)) * this.boostMul('carry'); }
+    scoutCap(lv) { // grows from cap at Lv 1 to capMax at the top jaws level
+      const s = C.scout, t = ((lv || this.st.up.jaws) - 1) / (C.up.jaws.max - 1);
+      return Math.round(s.cap * Math.pow(s.capMax / s.cap, t)) * this.boostMul('carry');
+    }
 
     upPrice(key) {
       const u = C.up[key], lv = this.st.up[key];

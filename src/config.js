@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.208',
+  version: '0.0.209',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -51,7 +51,7 @@ AF.config = {
   },
   boosts: { speed: 1.5, bite: 2, carry: 2 },
 
-  scout: { speed: 90, climb: 80, biteTime: 0.18, cap: 75, capPerJaw: 25, scale: 1.4 },
+  scout: { speed: 90, climb: 80, biteTime: 0.18, cap: 15, capMax: 300, scale: 1.4 },
 
   // ant types: traits, not roles. hire = first price, hireG = growth, costMul scales their stat upgrades
   types: {
