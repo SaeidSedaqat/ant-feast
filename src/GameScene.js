@@ -583,7 +583,7 @@
 
       U('colony', 'nest', 'Bigger nest', `Room for ${cap} ants (${cap + C.nestPer} next)`);
       U('colony', 'value', 'Crumb value', `Every crumb is worth ×${this.valMul().toFixed(2)}`);
-      const ul = (t, desc) => rows.push({ tab: 'colony', id: 'unlock.' + t, title: 'Unlock ' + C.types[t].name.toLowerCase() + 's', desc, lv: '', price: this.upPrice('unlock.' + t), block: up['unlock.' + t] ? 'Owned' : null });
+      const ul = (t, desc) => rows.push({ tab: 'colony', id: 'unlock.' + t, title: 'Unlock ' + C.types[t].name.toLowerCase() + 's', desc, lv: '', price: this.upPrice('unlock.' + t), show: !up['unlock.' + t] }); // owned unlocks leave the list
       ul('strong', 'They crack the hard chocolate shell and biscuit');
       ul('squad', 'Teams of 5 that dig where you send them');
 
