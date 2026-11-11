@@ -8,13 +8,44 @@
   const LAY = KINDS.map((k) => C.layers[k]);
   const SPR = [[255, 92, 120], [90, 190, 255], [255, 226, 70], [120, 220, 120], [190, 120, 255], [255, 255, 255]];
   const SHAPE = 2; // bump when the cake's shape changes so old saved columns are not applied to it
-  const PX = 3; // canvas pixels per cell (nearest filtering keeps them crisp)
+  const PX = 6; // canvas pixels per cell: enough room for each layer's texture when the camera is close
 
   function hash(a, b) {
     let h = (a * 374761393 + b * 668265263) | 0;
     h = Math.imul(h ^ (h >>> 13), 1274126177);
     return ((h ^ (h >>> 16)) >>> 0) / 4294967295;
   }
+
+  // Layer textures: a brightness multiplier per canvas pixel, tiling every P pixels in world space, so the
+  // pattern runs on across cell borders instead of showing the grid.
+  const P = 128;
+  function vnoise(x, y, f, seed) { // smooth value noise with f lattice steps across P (wraps, so it tiles)
+    const s = P / f, gx = x / s, gy = y / s, x0 = Math.floor(gx), y0 = Math.floor(gy);
+    const tx = gx - x0, ty = gy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
+    const h = (a, b) => hash((a % f) + seed * 977, (b % f) + seed * 131);
+    const a = h(x0, y0), b = h(x0 + 1, y0), c = h(x0, y0 + 1), d = h(x0 + 1, y0 + 1);
+    return a + (b - a) * sx + (c - a) * sy + (a - b - c + d) * sx * sy;
+  }
+  const grain = (x, y, s) => hash(x * 3 + s * 7919, y * 5 + s * 104729);
+  const PAT_FN = {
+    sponge: (x, y) => { // airy crumb with pores
+      const p = vnoise(x, y, 20, 2);
+      let m = 0.95 + 0.09 * vnoise(x, y, 8, 1);
+      if (p > 0.72) m *= 0.84 - (p - 0.72) * 0.9; else if (p > 0.66) m *= 1.05;
+      return m + (grain(x, y, 1) - 0.5) * 0.05;
+    },
+    cream: (x, y) => 0.975 + 0.03 * Math.sin(y * 0.55 + vnoise(x, y, 8, 3) * 7) + (grain(x, y, 2) - 0.5) * 0.015,
+    chocolate: (x, y) => 0.9 + 0.12 * vnoise(x, y, 16, 4) + (vnoise(x, y, 8, 5) > 0.74 ? 0.13 : 0) + grain(x, y, 3) * 0.03,
+    jam: (x, y) => 0.86 + 0.2 * vnoise(x, y, 10, 6) + (grain(x, y, 4) > 0.988 ? 0.5 : 0),
+    biscuit: (x, y) => { const g = grain(x, y, 5); return 0.95 + 0.08 * vnoise(x, y, 32, 8) + (g > 0.93 ? -0.17 : g < 0.05 ? 0.11 : 0); },
+    frosting: (x, y) => 0.98 + 0.05 * vnoise(x, y, 16, 9) + (grain(x, y, 6) - 0.5) * 0.025,
+    item: (x, y) => 0.94 + 0.1 * vnoise(x, y, 32, 10) + (grain(x, y, 7) - 0.5) * 0.04,
+  };
+  const PATS = KINDS.map((k) => {
+    const a = new Float32Array(P * P), fn = PAT_FN[k];
+    for (let y = 0; y < P; y++) for (let x = 0; x < P; x++) a[y * P + x] = fn ? fn(x, y) : 1;
+    return a;
+  });
   const toInt = (c) => (c[0] << 16) | (c[1] << 8) | c[2];
 
   class GiantCake {
@@ -188,6 +219,32 @@
       return [Math.min(255, col[0] * m) | 0, Math.min(255, col[1] * m) | 0, Math.min(255, col[2] * m) | 0];
     }
 
+    // Paint cell (c, r) as PX×PX pixels into image data d (width W) with its top-left pixel at (px, py).
+    paintCell(d, W, px, py, c, r, top) {
+      const k = this.kind[r * this.cols + c], pat = PATS[k];
+      let col = LAY[k].color, cand = -1;
+      if (k === KI.sprinkle) col = SPR[Math.floor(hash(r, c) * SPR.length)];
+      else if (k === KI.item) col = C.items[this.items[this.itemAt.get(r * this.cols + c)].key].color;
+      else if (k === KI.candle) {
+        cand = this.full[c] - 1 - r; // 0 tip of the flame, 1 flame, 2 wick, more = striped wax
+        if (cand < 3) col = cand === 2 ? [60, 40, 30] : cand === 1 ? [255, 150, 40] : [255, 236, 120];
+      }
+      for (let yy = 0; yy < PX; yy++) {
+        const gy = r * PX + (PX - 1 - yy); // world pixel row, counted up from the stand
+        for (let xx = 0; xx < PX; xx++) {
+          const gx = c * PX + xx;
+          let m, rgb = col;
+          if (cand >= 3) { rgb = ((gx + gy) >> 3) & 1 ? col : [250, 250, 255]; m = 1; }
+          else if (cand >= 0) m = 1;
+          else if (k === KI.sprinkle) m = xx === 0 || yy === PX - 1 ? 0.82 : yy === 0 ? 1.12 : 1;
+          else m = pat[(gy & (P - 1)) * P + (gx & (P - 1))];
+          if (top && cand < 0) m *= yy < 2 ? 1.14 : yy < 3 ? 1.06 : 1; // a lit rim on the exposed top
+          const o = ((py + yy) * W + px + xx) * 4;
+          d[o] = Math.min(255, rgb[0] * m); d[o + 1] = Math.min(255, rgb[1] * m); d[o + 2] = Math.min(255, rgb[2] * m); d[o + 3] = 255;
+        }
+      }
+    }
+
     buildTiles() {
       const tc = K.tile, tr = K.tileRows;
       this.tw = Math.ceil(this.cols / tc); this.th = Math.ceil(this.rows / tr);
@@ -218,12 +275,7 @@
         const hc = this.h[c];
         for (let lr = 0; lr < tr; lr++) {
           const r = t.ty * tr + lr; if (r >= hc) break;
-          const rgb = this.cellRGB(c, r, r === hc - 1);
-          const py = (tr - 1 - lr) * PX, px = lc * PX;
-          for (let yy = 0; yy < PX; yy++) for (let xx = 0; xx < PX; xx++) {
-            const o = ((py + yy) * W + px + xx) * 4;
-            d[o] = rgb[0]; d[o + 1] = rgb[1]; d[o + 2] = rgb[2]; d[o + 3] = 255;
-          }
+          this.paintCell(d, W, lc * PX, (tr - 1 - lr) * PX, c, r, r === hc - 1);
         }
       }
       t.ctx.putImageData(im, 0, 0);
@@ -239,9 +291,10 @@
         this.dirty.add(t);
       }
       if (nh > 0) {
-        const r = nh - 1, t = this.tileOf(c, r), rgb = this.cellRGB(c, r, true);
-        t.ctx.fillStyle = `rgb(${rgb[0]},${rgb[1]},${rgb[2]})`;
-        t.ctx.fillRect((c - t.tx * K.tile) * PX, (tr - 1 - (r - t.ty * tr)) * PX, PX, PX);
+        const r = nh - 1, t = this.tileOf(c, r);
+        if (!this.cellIm) this.cellIm = t.ctx.createImageData(PX, PX);
+        this.paintCell(this.cellIm.data, PX, 0, 0, c, r, true);
+        t.ctx.putImageData(this.cellIm, (c - t.tx * K.tile) * PX, (tr - 1 - (r - t.ty * tr)) * PX);
         this.dirty.add(t);
       }
     }
