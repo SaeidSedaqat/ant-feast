@@ -1,23 +1,23 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.207',
+  version: '0.0.208',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
   // the nest is left of the Giant Cake; ceiling = the highest the scout can be
-  world: { left: -420, right: 3400, nestX: 0, nestRadius: 16, ceiling: 2500, exitGap: 0.2 },
+  world: { left: -420, right: 1900, nestX: 0, nestRadius: 16, ceiling: 2500, exitGap: 0.2 },
 
   cell: 6,
   antLength: 10, // world units
 
-  // The Giant Cake: half the width of the first Giant Cake. Rows/cols are cells; layers are listed bottom-up in `bands`.
+  // The Giant Cake: a quarter of the width of the first Giant Cake. Rows/cols are cells; layers are listed bottom-up in `bands`.
   cake: {
-    x0: 150, cols: 500, rows: 220, stand: 6, standPad: 40,
-    shoulder: 14,      // rounded top edge of each tier, in columns
+    x0: 150, cols: 250, rows: 220, stand: 6, standPad: 40,
+    shoulder: 8,       // rounded top edge of each tier, in columns
     // stacked tiers, bottom-up: [inset in columns on each side, top row]. Each tier is narrower, so ants climb
     // step by step over the ledges. The last top must equal rows - candles.rows.
-    tiers: [[0, 92], [65, 140], [130, 180]],
+    tiers: [[0, 92], [33, 140], [65, 180]],
     ledge: 7,          // frosting thickness on the lower tiers' ledges
     // filling stripes inside the upper tiers: [from row, to row, layer]. The bottom tier uses `bands`.
     tierBands: [[100, 106, 'cream'], [114, 120, 'jam'], [146, 150, 'chocolate'], [155, 160, 'cream']],
@@ -44,9 +44,9 @@ AF.config = {
 
   // hidden treats: a burst of crumbs (times crumb value) and a timed boost for the whole colony
   items: {
-    banana: { name: 'Banana slice', n: 5, layer: 'sponge', burst: 400, boost: 'speed', time: 30, color: [250, 226, 120] },
-    cherry: { name: 'Cherry', n: 4, layer: 'cream', burst: 2500, boost: 'bite', time: 30, color: [205, 24, 46] },
-    chunk: { name: 'Chocolate chunk', n: 4, layer: 'biscuit', burst: 6000, boost: 'carry', time: 30, color: [70, 38, 20] },
+    banana: { name: 'Banana slice', n: 3, layer: 'sponge', burst: 400, boost: 'speed', time: 30, color: [250, 226, 120] },
+    cherry: { name: 'Cherry', n: 2, layer: 'cream', burst: 2500, boost: 'bite', time: 30, color: [205, 24, 46] },
+    chunk: { name: 'Chocolate chunk', n: 2, layer: 'biscuit', burst: 6000, boost: 'carry', time: 30, color: [70, 38, 20] },
     treasure: { name: 'Golden ring', n: 1, layer: 'biscuit', burst: 60000, boost: 'all', time: 60, color: [255, 205, 50] },
   },
   boosts: { speed: 1.5, bite: 2, carry: 2 },

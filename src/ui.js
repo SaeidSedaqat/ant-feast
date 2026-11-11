@@ -133,8 +133,6 @@
       set($('eaten'), 'e', `<span>Cake eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
       set($('colony'), 'a', v.colony);
       $('colony').hidden = !v.colony;
-      set($('layer'), 'l', v.layer);
-      $('layer').hidden = !v.layer;
       set($('boosts'), 'b', v.boosts);
       $('boosts').hidden = !v.boosts;
       set($('time'), 'time', fmtTime(v.time));

@@ -603,12 +603,10 @@
       const c = cake.colAt(sc.x);
       if (c >= 0 && cake.h[c] > 0 && Math.abs(sc.h - cake.topH(c)) < 3) kind = cake.topKind(c);
       kind = kind || this.lastKind;
-      const L = kind && C.layers[kind];
       AF.ui.update({
         crumbs: st.crumbs,
         eaten: cake.left > 0 ? Math.min(99, Math.floor((1 - cake.left / cake.total) * 100)) : 100,
         colony: units ? `Ants ${units}/${this.nestCap()}` : '',
-        layer: L ? `${L.name}${L.sticky ? ' (sticky)' : L.hard >= 3 ? ' (hard)' : ''}` : '',
         boosts: bs.join(' · '),
         time: st.time,
         rows: this.rows(),
