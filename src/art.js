@@ -41,6 +41,8 @@
     } else { g.beginPath(); g.moveTo(74, 27); g.quadraticCurveTo(82, 30, 78, 33); g.stroke(); }
     // eye
     ell(71, 19, 2.8, 2.8, 0, '#ffffff');
+    ell(72, 19, 1.5, 1.5, 0, '#000000');
+  }
 
   function mk(scene, key, w, h, draw) {
     if (scene.textures.exists(key)) return;
