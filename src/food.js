@@ -40,6 +40,8 @@
     // ---------- shape ----------
     // tier index of a column d columns in from the nearer edge (the highest tier that covers it)
     tierOfD(d) { let i = 0; for (let t = 0; t < K.tiers.length; t++) if (d >= K.tiers[t][0]) i = t; return i; }
+    // filling stripe at row r in the upper tiers, or -1 for plain sponge
+    tierBand(r) { for (const [a, z, n] of K.tierBands) if (r >= a && r < z) return KI[n]; return -1; }
     // tier index that holds row r
     tierOfRow(r) { for (let t = 0; t < K.tiers.length; t++) if (r < K.tiers[t][1]) return t; return K.tiers.length - 1; }
     // body top row at distance d from the edge, rounded at each tier's shoulder; frost = frosting thickness there
@@ -72,7 +74,7 @@
           else if (r < b.cream) k = KI.cream;
           else if (r < b.chocolate) k = KI.chocolate;
           else if (r < b.jam) k = KI.jam;
-          else k = KI.sponge;
+          else { k = this.tierBand(r); if (k < 0) k = KI.sponge; }
           this.kind[r * cols + c] = k;
         }
       }

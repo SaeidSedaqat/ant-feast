@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.159',
+  version: '0.0.160',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -20,6 +20,8 @@ AF.config = {
     // step by step over the ledges. The last top must equal rows - candles.rows.
     tiers: [[0, 92], [130, 140], [260, 180]],
     ledge: 7,          // frosting thickness on the lower tiers' ledges
+    // filling stripes inside the upper tiers: [from row, to row, layer]. The bottom tier uses `bands`.
+    tierBands: [[100, 106, 'cream'], [114, 120, 'jam'], [146, 150, 'chocolate'], [155, 160, 'cream']],
     coat: 3,           // frosting coat on the sides
     frosting: 16,      // frosting thickness on top
     sprinkle: 0.07,    // share of frosting cells that are sprinkles
