@@ -59,10 +59,6 @@
       mk(scene, 'strong' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#5a1410', '#c0503a', true));
       mk(scene, 'squad' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#1e3a5a', '#5a8ac0'));
     }
-    mk(scene, 'flag', 32, 48, (g) => {
-      g.strokeStyle = '#3b1d08'; g.lineWidth = 3; g.beginPath(); g.moveTo(6, 2); g.lineTo(6, 47); g.stroke();
-      g.fillStyle = '#ffffff'; g.beginPath(); g.moveTo(7, 3); g.lineTo(30, 10); g.lineTo(7, 19); g.closePath(); g.fill();
-    });
     mk(scene, 'crumb', 16, 16, (g) => {
       g.fillStyle = '#ffffff';
       g.beginPath(); g.moveTo(2, 6); g.lineTo(8, 1); g.lineTo(15, 5); g.lineTo(13, 14); g.lineTo(4, 15); g.closePath(); g.fill();

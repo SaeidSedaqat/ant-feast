@@ -1,4 +1,4 @@
-// The game: the scout (player), the Giant Cake, the colony's ants (instinct jobs, pheromone flags, squads),
+// The game: the scout (player), the Giant Cake, the colony's ants (instinct jobs, squads),
 // upgrades, autosave and the ?dev=1 tools.
 (function () {
   const C = AF.config;
@@ -38,10 +38,8 @@
       this.claim = new Uint16Array((cake.cols >> 1) + 2);
       for (const t of TYPES) { const n = Math.max(0, this.st.counts[t] | 0); this.st.counts[t] = 0; for (let i = 0; i < n; i++) this.spawn(t, i); }
 
-      this.flagImg = this.add.image(0, 0, 'flag').setOrigin(6 / 32, 1).setDepth(19).setTint(0xff5a8a).setVisible(false);
-      this.flagG = this.add.graphics().setDepth(6);
       this.selRing = this.add.image(0, 0, 'ring').setDepth(19).setTint(0x7ad0ff).setVisible(false);
-      this.selSquad = null; this.drawT = 0;
+      this.selSquad = null;
       this.parts = 0; this.gain = 0; this.gainT = 0; this.lastKind = null;
       this.devSpeed = 1; this.uz = 1;
 
@@ -62,12 +60,12 @@
     }
 
     freshState(s) {
-      const st = { crumbs: 0, time: 0, won: false, hint: 0, flagUsed: false, up: {}, tu: {}, counts: {}, boosts: { speed: 0, bite: 0, carry: 0 }, flag: null };
+      const st = { crumbs: 0, time: 0, won: false, hint: 0, up: {}, tu: {}, counts: {}, boosts: { speed: 0, bite: 0, carry: 0 } };
       for (const k of Object.keys(C.up)) st.up[k] = C.up[k].start;
       for (const t of TYPES) { st.tu[t] = { speed: 1, carry: 1, bite: 1 }; st.counts[t] = 0; }
       if (s.v !== 3) return st;
       st.crumbs = Math.max(0, +s.crumbs || 0); st.time = Math.max(0, +s.time || 0);
-      st.won = !!s.won; st.hint = s.hint | 0; st.flagUsed = !!s.flagUsed;
+      st.won = !!s.won; st.hint = s.hint | 0;
       if (s.up) for (const k of Object.keys(st.up)) if (typeof s.up[k] === 'number') st.up[k] = clamp(s.up[k] | 0, 0, C.up[k].max);
       if (s.tu) for (const t of TYPES) if (s.tu[t]) for (const k of ['speed', 'carry', 'bite']) if (typeof s.tu[t][k] === 'number') st.tu[t][k] = clamp(s.tu[t][k] | 0, 1, C.typeUp[k].max);
       if (s.counts) for (const t of TYPES) st.counts[t] = Math.max(0, s.counts[t] | 0);
@@ -111,7 +109,7 @@
       };
     }
 
-    // tap the world: select a squad, send the selected squad, or plant a pheromone flag
+    // tap the world: select a squad, or send the selected squad to dig a spot
     tap(p) {
       if (this.st.won) return;
       const wp = this.cameras.main.getWorldPoint(p.x, p.y), x = wp.x, h = -wp.y;
@@ -130,20 +128,7 @@
         AF.audio.blip(760);
         return;
       }
-      this.placeFlag(x, 0);
     }
-
-    placeFlag(x, extra) {
-      const st = this.st;
-      st.flag = { x: clamp(x, this.cake.x0, this.cake.x1 - 1), t: this.flagTime(), r: this.flagRadius() + (extra || 0) };
-      st.flagUsed = true;
-      for (const a of this.ants) if (a.type !== 'squad' && (a.state === 'out' || a.state === 'dig') && a.w.load < this.stats(a.type).carry * 0.5) this.retarget(a);
-      this.ring(st.flag.x, -this.cake.surfaceAt(st.flag.x) - 8);
-      this.drawFlagRange();
-      AF.audio.blip(820);
-    }
-    flagTime() { return 15; }
-    flagRadius() { return 70; }
 
     zoomBy(f) { const za = this.zAuto || 1; this.uz = clamp(this.uz * f, 0.15, Math.max(1, C.camera.maxZoom / za)); } // zoom-in tops out at maxZoom on screen (or the auto view, if that is closer)
 
@@ -261,14 +246,6 @@
         a.target = null;
       }
       let lo = 0, hi = cols - 1;
-      const f = this.st.flag;
-      if (f && t !== 'squad') {
-        const l2 = cake.colAt(f.x - f.r), h2 = cake.colAt(f.x + f.r);
-        const L = l2 < 0 ? 0 : l2, R = h2 < 0 ? cols - 1 : h2;
-        let any = false;
-        for (let c = L; c <= R; c++) if (H[c] > 0 && this.canEat(t, c)) { any = true; break; }
-        if (any) { lo = L; hi = R; }
-      }
       const stepC = Math.max(1, Math.floor((hi - lo + 1) / 160));
       const mine = a.tc >= 0 ? a.tc >> 1 : -1;
       let best = -1, bs = -1;
@@ -435,15 +412,6 @@
       if (res.item) this.foundItem(res.item);
     }
 
-    // ---------- flags ----------
-    drawFlagRange() {
-      const g = this.flagG, f = this.st.flag, cake = this.cake;
-      g.clear();
-      if (!f) return;
-      g.fillStyle(0xff5a8a, 0.55);
-      for (let x = f.x - f.r; x <= f.x + f.r; x += 4) g.fillCircle(x, -cake.surfaceAt(x) - 1, 0.9);
-    }
-
     // ---------- main loop ----------
     update(time, delta) {
       const raw = Math.min(delta / 1000, 0.05);
@@ -452,24 +420,17 @@
       for (let i = 0; i < steps; i++) this.tick(raw);
       this.cake.flush();
       this.updateCamera(raw, false);
-      this.drawT += raw;
-      if (this.drawT > 0.25) { this.drawT = 0; this.drawFlagRange(); }
       this.uiT += raw;
       if (this.uiT > 0.1) { this.uiT = 0; this.refreshUI(); }
       this.saveT += raw;
       if (this.saveT > 3) { this.saveT = 0; this.persist(); }
       if (!this.selSquad || this.ants.indexOf(this.selSquad) < 0) this.selRing.setVisible(false);
-      if (st.flag) {
-        const f = st.flag;
-        this.flagImg.setVisible(true).setPosition(f.x, -this.cake.surfaceAt(f.x)).setScale(16 / 48).setAlpha(f.t < 3 ? 0.4 + 0.6 * ((this.time.now / 150) & 1) : 1);
-      } else this.flagImg.setVisible(false);
     }
 
     tick(dt) {
       const st = this.st;
       if (!st.won) st.time += dt;
       for (const k of Object.keys(st.boosts)) if (st.boosts[k] > 0) st.boosts[k] = Math.max(0, st.boosts[k] - dt);
-      if (st.flag) { st.flag.t -= dt; if (st.flag.t <= 0) { st.flag = null; this.drawFlagRange(); } }
       this.updateScout(dt);
       this.updateAnts(dt);
       this.gainT += dt;
@@ -624,7 +585,6 @@
       else if (sc.load >= sc.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
       else if (units === 0) h = st.crumbs >= this.hirePrice('worker') ? 'Hire a worker ant in Upgrades → Ants' : 'Bring crumbs home to hire worker ants';
-      else if (!st.flagUsed && units >= 2) h = 'Tap the cake to plant a pheromone flag: ants dig there';
       else if ((hard || this.idleWorkers > 0) && !this.unlocked('strong')) h = 'The chocolate shell is hard. Unlock strong ants in Colony';
       AF.ui.hint(h);
     }
@@ -634,7 +594,7 @@
       if (this.resetting) return;
       const st = this.st, sc = this.scout;
       AF.save.write({
-        v: 3, crumbs: st.crumbs, time: st.time, won: st.won, hint: st.hint, flagUsed: st.flagUsed,
+        v: 3, crumbs: st.crumbs, time: st.time, won: st.won, hint: st.hint,
         up: st.up, tu: st.tu, counts: st.counts, boosts: st.boosts,
         scoutX: Math.round(sc.x * 10) / 10, scoutH: Math.round(sc.h * 10) / 10, scoutLoad: sc.load, scoutVal: sc.loadVal,
         cake: this.cake.encode(),
