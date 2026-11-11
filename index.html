@@ -38,8 +38,6 @@
     #eaten .track { width: clamp(60px, 14vw, 160px); height: 0.6em; background: rgba(0, 0, 0, 0.35); border-radius: 99px; overflow: hidden; box-shadow: inset 0 1px 2px rgba(0, 0, 0, 0.5); }
     #eaten .fillbar { display: block; height: 100%; border-radius: 99px; background: linear-gradient(180deg, rgba(255,255,255,0.35), transparent 55%), linear-gradient(90deg, #ffcf6b, #ff8a4a); transition: width 0.3s; }
     #crumbs { font-size: clamp(17px, 2.8vmin, 32px); font-weight: 800; color: #ffe2a8; text-shadow: 0 1px 0 rgba(0, 0, 0, 0.4); font-variant-numeric: tabular-nums; }
-    #crumbs.bump { animation: bump 0.3s ease-out; }
-    @keyframes bump { 35% { transform: scale(1.07); color: #fff6d8; } }
     #spacer { flex: 1; }
     .small { font-size: clamp(11px, 1.5vmin, 17px); opacity: 0.9; }
     .ic { display: inline-block; width: 0.8em; height: 0.75em; margin-right: 0.3em; background: linear-gradient(135deg, #ffe6ae 10%, #e9b872 45%, #c98a3c 90%);
@@ -193,9 +191,9 @@
     // Byte-weighted loader: download every script with progress, then run them in order.
     var files = [
       ['lib/phaser-4.2.1.min.js', 1375976],
-      ['src/config.js?v=0.0.225', 6000], ['src/food.js?v=0.0.225', 14000], ['src/art.js?v=0.0.225', 12000],
-      ['src/walker.js?v=0.0.225', 5000], ['src/support.js?v=0.0.225', 8000], ['src/ui.js?v=0.0.225', 9000],
-      ['src/GameScene.js?v=0.0.225', 50000], ['src/main.js?v=0.0.225', 1500]
+      ['src/config.js?v=0.0.226', 6000], ['src/food.js?v=0.0.226', 14000], ['src/art.js?v=0.0.226', 12000],
+      ['src/walker.js?v=0.0.226', 5000], ['src/support.js?v=0.0.226', 8000], ['src/ui.js?v=0.0.226', 9000],
+      ['src/GameScene.js?v=0.0.226', 50000], ['src/main.js?v=0.0.226', 1500]
     ];
     var bar = document.getElementById('lbar'), pct = document.getElementById('lpct');
     var total = 0, got = files.map(function () { return 0; }), shown = 0, texts = [];

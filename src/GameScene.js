@@ -119,8 +119,8 @@
         f.fl.setVisible(on); f.glow.setVisible(on);
         if (!on) continue;
         const k = 0.55 + 0.45 * n / (2 * f.cols.length);
-        const a = Math.sin(t * 11 + f.ph), b = Math.sin(t * 17.3 + f.ph * 2.1), c = Math.sin(t * 5.1 + f.ph);
-        f.fl.setScale(0.44 * k * (1 + 0.05 * b), 0.46 * k * (1 + 0.09 * a)).setRotation(0.07 * c + 0.03 * b);
+        const a = Math.sin(t * 11 + f.ph), b = Math.sin(t * 17.3 + f.ph * 2.1);
+        f.fl.setScale(0.44 * k * (1 + 0.05 * b), 0.46 * k * (1 + 0.09 * a));
         f.glow.setScale(0.62 * k * (1 + 0.07 * a)).setAlpha(0.5 + 0.1 * b);
       }
     }
@@ -359,7 +359,6 @@
             if (a.biteT >= s.biteTime) {
               a.biteT = 0;
               const res = cake.eat(a.tc, s.bite, Math.max(0, s.carry - w.load), EFF[a.type]);
-              w.chomp();
               if (res.n) {
                 w.load += res.n; w.loadVal += res.value; w.color = res.color; this.lastKind = res.kind;
                 if (Math.random() < 0.3) this.spray(w.x, -w.h - 2, res.color, 1);
@@ -395,7 +394,7 @@
         const ring = i % 2 ? 1 : -1;
         const x = w.x + dir * (4 + 3 * Math.floor(i / 2)) + ring * 1.5;
         const h = Math.max(this.cake.surfaceAt(x), Math.min(w.h, this.cake.surfaceAt(x) + 3));
-        const fr = (w.frame + 2 * (i & 1)) % AF.ANT_FRAMES;
+        const fr = (w.frame + (i & 1)) % AF.ANT_FRAMES;
         m.setTexture('squad' + fr).setPosition(x, -h).setFlipX(w.flip).setRotation(w.mode === 'walk' ? 0 : w.rot * 0.5);
       });
       if (this.selSquad === a) this.selRing.setVisible(true).setPosition(w.x, -w.h - 4).setScale(0.35 + 0.04 * Math.sin(this.time.now / 120));
@@ -474,7 +473,6 @@
         this.spray(cake.colCenter(best), -cake.topH(best) - 2, res.color, 3);
         if (st.hint === 0) st.hint = 1;
       }
-      sc.chomp();
       AF.audio.chomp();
       if (res.item) this.foundItem(res.item);
     }
@@ -523,13 +521,13 @@
       for (let i = 0; i < n; i++) {
         if (this.parts > 120) return;
         this.parts++;
-        // a little crumb that hops up, tumbles and drops
+        // a little crumb that hops up and drops
         const d = this.add.image(x, y, 'crumb').setTint(color).setScale(0.05 + Math.random() * 0.04).setDepth(18).setAngle(Math.random() * 360);
-        const tx = x + (Math.random() - 0.5) * 14, ty = y - 3 - Math.random() * 7, spin = (Math.random() - 0.5) * 500;
+        const tx = x + (Math.random() - 0.5) * 14, ty = y - 3 - Math.random() * 7;
         this.tweens.add({
-          targets: d, x: tx, y: ty, angle: d.angle + spin * 0.4, duration: 190, ease: 'Quad.out',
+          targets: d, x: tx, y: ty, duration: 190, ease: 'Quad.out',
           onComplete: () => this.tweens.add({
-            targets: d, x: tx + (tx - x) * 0.5, y: ty + 11, angle: d.angle + spin * 0.6, alpha: 0, duration: 300, ease: 'Quad.in',
+            targets: d, x: tx + (tx - x) * 0.5, y: ty + 11, alpha: 0, duration: 300, ease: 'Quad.in',
             onComplete: () => { d.destroy(); this.parts--; },
           }),
         });
@@ -543,8 +541,7 @@
         color: '#fff3c4', stroke: '#4a2400', strokeThickness: 7,
       }).setOrigin(0.5, 1).setDepth(30);
       const fs = (cssPx * AF.DPR) / (32 * z);
-      t.setScale(fs * 0.5);
-      this.tweens.add({ targets: t, scale: fs, duration: 200, ease: 'Back.out' });
+      t.setScale(fs);
       this.tweens.add({ targets: t, y: y - (36 * AF.DPR) / z, alpha: 0, duration: 1000, ease: 'Cubic.out', onComplete: () => t.destroy() });
     }
 

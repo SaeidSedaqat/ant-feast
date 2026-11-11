@@ -41,16 +41,6 @@
       if (!ok) return;
       el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
     },
-    // the crumb counter gives a little bounce when crumbs come in
-    bump(c) {
-      const now = Date.now();
-      if (this.lastC !== undefined && c > this.lastC + 0.5 && now - (this.bumpT || 0) > 600) {
-        this.bumpT = now;
-        const el = $('crumbs'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
-      }
-      this.lastC = c;
-    },
-
     openPanel(on) {
       this.panelOpen = on;
       $('side').hidden = !on;
@@ -149,7 +139,6 @@
 
     update(v) {
       set($('crumbs'), 'c', `${IC}${fmt(v.crumbs)}`);
-      this.bump(v.crumbs);
       set($('eaten'), 'e', `<span>Cake eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
       set($('colony'), 'a', v.colony);
       $('colony').hidden = !v.colony;

@@ -1,7 +1,7 @@
 // Procedural textures (no image files yet): ants, crumbs, scout marker, tablecloth tile.
 (function () {
   const S = 2; // ants are drawn at twice their layout size so they stay sharp when the camera is close
-  const ANT_W = 96 * S, ANT_H = 48 * S, FRAMES = 4;
+  const ANT_W = 96 * S, ANT_H = 48 * S, FRAMES = 2; // a plain two-pose walk
 
   // lighten (f > 0) or darken (f < 0) a #rrggbb colour
   function shade(hex, f) {
@@ -13,7 +13,7 @@
   // One leg: thigh up and out from the hip, shin down to the foot. t is the leg's place in the walk cycle:
   // the first half it stands and pushes back, the second half it lifts and swings forward.
   function leg(g, hip, restX, t, footY, col, line, w) {
-    const a = 6;
+    const a = 4;
     let fx, lift = 0;
     if (t < 0.5) fx = restX + a - 4 * a * t;
     else { fx = restX - a + 4 * a * (t - 0.5); lift = Math.sin((t - 0.5) * 2 * Math.PI) * 3.6; }
@@ -34,7 +34,7 @@
     g.lineCap = 'round'; g.lineJoin = 'round';
     const p = frame / FRAMES;
     const hips = [[55, 28], [50, 29.5], [45, 28]], rest = [70, 50, 29], off = [0, 0.5, 0];
-    const wig = [0, 1.2, 0, -1.2][frame];
+    const wig = 0;
 
     // far side: legs half a cycle behind the near ones, and one antenna
     for (let i = 0; i < 3; i++) leg(g, [hips[i][0] + 1.5, hips[i][1] - 1], rest[i] + 3, (p + off[i] + 0.5) % 1, 45.4, pal.far, null, 2.1);
