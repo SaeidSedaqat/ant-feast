@@ -236,7 +236,7 @@
       else {
         const ti = this.tierOfRow(r), d = Math.min(c, this.cols - 1 - c) - K.tiers[ti][0];
         sh = 0.8 + 0.2 * Math.sqrt(Math.max(0, Math.min(1, d / 20)));
-        if (c > this.cols / 2) sh *= 0.965;
+        sh *= 1.02 - 0.06 * c / this.cols;
         if (ti > 0) { const up = r - K.tiers[ti - 1][1]; if (up < 4) sh *= 0.86 + 0.035 * up; }
       }
       const mid = (K.candles.w - 1) >> 1;
