@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.205',
+  version: '0.0.206',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -56,23 +56,23 @@ AF.config = {
   // ant types: traits, not roles. hire = first price, hireG = growth, costMul scales their stat upgrades
   types: {
     worker: { name: 'Worker', speed: 80, climb: 70, carry: 4, bite: 1, biteTime: 0.3, hire: 8, hireG: 1.06, costMul: 1, tex: 'ant', scale: 1 },
-    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 45, hireG: 1.08, costMul: 2.5, tex: 'strong', scale: 1.3 },
+    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 45, hireG: 1.08, costMul: 2.5, tex: 'strong', scale: 1.3, max: 50 },
     squad: { name: 'Squad', speed: 72, climb: 64, carry: 5, bite: 1.3, biteTime: 0.3, hire: 500, hireG: 1.25, costMul: 10, tex: 'squad', scale: 1.1, max: 10 },
   },
 
   // upgrades: price of the next level = base * g^(level - start); `costs` lists fixed prices instead
   up: {
-    legs: { base: 15, g: 1.6, max: 12, start: 1 },
-    jaws: { base: 12, g: 1.65, max: 12, start: 1 },
-    nest: { base: 20, g: 1.3, max: 30, start: 1 },
-    value: { base: 120, g: 1.9, max: 15, start: 1 },
+    legs: { base: 15, g: 1.6, max: 10, start: 1 },
+    jaws: { base: 12, g: 1.65, max: 10, start: 1 },
+    nest: { base: 20, g: 1.3, max: Infinity, start: 1 },
+    value: { base: 120, g: 1.9, max: Infinity, start: 1 },
     'unlock.strong': { costs: [200], max: 1, start: 0 },
     'unlock.squad': { costs: [2500], max: 1, start: 0 },
   },
   typeUp: { // per ant type, times the type's costMul
-    speed: { base: 25, g: 1.55, max: 15, start: 1 },
-    carry: { base: 20, g: 1.55, max: 15, start: 1 },
-    bite: { base: 30, g: 1.6, max: 15, start: 1 },
+    speed: { base: 25, g: 1.55, max: 10, start: 1 },
+    carry: { base: 20, g: 1.55, max: 10, start: 1 },
+    bite: { base: 30, g: 1.6, max: 10, start: 1 },
   },
   nestBase: 15, nestPer: 15, // ants the nest holds: base + per * (level - 1)
 
