@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.211',
+  version: '0.0.212',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -56,8 +56,8 @@ AF.config = {
   // ant types: traits, not roles. hire = first price, hireG = growth, costMul scales their stat upgrades
   types: {
     worker: { name: 'Worker', speed: 80, climb: 70, carry: 4, bite: 1, biteTime: 0.3, hire: 8, hireG: 1.06, costMul: 1, tex: 'ant', scale: 1 },
-    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 45, hireG: 1.08, costMul: 2.5, tex: 'strong', scale: 1.3, max: 50 },
-    squad: { name: 'Squad', speed: 72, climb: 64, carry: 5, bite: 1.3, biteTime: 0.3, hire: 500, hireG: 1.25, costMul: 10, tex: 'squad', scale: 1.1, max: 10 },
+    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 45, hireG: 1.08, costMul: 2.5, tex: 'strong', scale: 1.3 },
+    squad: { name: 'Squad', speed: 72, climb: 64, carry: 5, bite: 1.3, biteTime: 0.3, hire: 500, hireG: 1.25, costMul: 10, tex: 'squad', scale: 1.1 },
   },
 
   // upgrades: price of the next level = base * g^(level - start); `costs` lists fixed prices instead
