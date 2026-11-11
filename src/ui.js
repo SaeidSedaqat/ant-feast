@@ -126,7 +126,7 @@
         if (el.hidden) continue;
         if (r.head) { set(el, r.id, r.head); continue; }
         const right = r.block ? `<span class="pr no">${r.block}</span>` : r.price == null ? '<span class="pr no">MAX</span>' : `<span class="pr">${IC}${fmt(r.price)}</span>`;
-        set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em>${r.pip != null ? `<span class="lvb"><i style="width:${Math.round(r.pip * 100)}%"></i></span>` : ''}<small>${r.desc}</small></span>${right}`);
+        set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em>${r.pip != null ? `<span class="lvb"><i style="width:${Math.round(r.pip * 100)}%"></i></span>` : ''}</span>${right}`);
         const off = !!r.block || r.price == null || crumbs < r.price;
         el.disabled = off;
         // a thin bar along the bottom of a row you can't afford yet shows how close you are
