@@ -18,7 +18,7 @@
 
   // Layer textures: a brightness multiplier per canvas pixel, tiling every P pixels in world space, so the
   // pattern runs on across cell borders instead of showing the grid.
-  const P = 128;
+  const P = 256;
   function vnoise(x, y, f, seed) { // smooth value noise with f lattice steps across P (wraps, so it tiles)
     const s = P / f, gx = x / s, gy = y / s, x0 = Math.floor(gx), y0 = Math.floor(gy);
     const tx = gx - x0, ty = gy - y0, sx = tx * tx * (3 - 2 * tx), sy = ty * ty * (3 - 2 * ty);
@@ -29,17 +29,17 @@
   const grain = (x, y, s) => hash(x * 3 + s * 7919, y * 5 + s * 104729);
   const PAT_FN = {
     sponge: (x, y) => { // airy crumb with pores
-      const p = vnoise(x, y, 20, 2);
-      let m = 0.95 + 0.09 * vnoise(x, y, 8, 1);
+      const p = vnoise(x, y, 40, 2);
+      let m = 0.95 + 0.09 * vnoise(x, y, 16, 1);
       if (p > 0.72) m *= 0.84 - (p - 0.72) * 0.9; else if (p > 0.66) m *= 1.05;
       return m + (grain(x, y, 1) - 0.5) * 0.05;
     },
-    cream: (x, y) => 0.975 + 0.03 * Math.sin(y * 0.55 + vnoise(x, y, 8, 3) * 7) + (grain(x, y, 2) - 0.5) * 0.015,
-    chocolate: (x, y) => 0.9 + 0.12 * vnoise(x, y, 16, 4) + (vnoise(x, y, 8, 5) > 0.74 ? 0.13 : 0) + grain(x, y, 3) * 0.03,
-    jam: (x, y) => 0.86 + 0.2 * vnoise(x, y, 10, 6) + (grain(x, y, 4) > 0.988 ? 0.5 : 0),
-    biscuit: (x, y) => { const g = grain(x, y, 5); return 0.95 + 0.08 * vnoise(x, y, 32, 8) + (g > 0.93 ? -0.17 : g < 0.05 ? 0.11 : 0); },
-    frosting: (x, y) => 0.98 + 0.05 * vnoise(x, y, 16, 9) + (grain(x, y, 6) - 0.5) * 0.025,
-    item: (x, y) => 0.94 + 0.1 * vnoise(x, y, 32, 10) + (grain(x, y, 7) - 0.5) * 0.04,
+    cream: (x, y) => 0.975 + 0.03 * Math.sin(y * (Math.PI * 44 / P) + vnoise(x, y, 16, 3) * 7) + (grain(x, y, 2) - 0.5) * 0.015,
+    chocolate: (x, y) => 0.9 + 0.12 * vnoise(x, y, 24, 4) + Math.max(0, vnoise(x, y, 40, 5) - 0.7) * 0.5 + grain(x, y, 3) * 0.03,
+    jam: (x, y) => 0.86 + 0.2 * vnoise(x, y, 20, 6) + (grain(x, y, 4) > 0.988 ? 0.5 : 0),
+    biscuit: (x, y) => { const g = grain(x, y, 5); return 0.95 + 0.08 * vnoise(x, y, 64, 8) + (g > 0.93 ? -0.17 : g < 0.05 ? 0.11 : 0); },
+    frosting: (x, y) => 0.98 + 0.05 * vnoise(x, y, 32, 9) + (grain(x, y, 6) - 0.5) * 0.025,
+    item: (x, y) => 0.94 + 0.1 * vnoise(x, y, 64, 10) + (grain(x, y, 7) - 0.5) * 0.04,
   };
   const PATS = KINDS.map((k) => {
     const a = new Float32Array(P * P), fn = PAT_FN[k];
