@@ -1,12 +1,12 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.183',
+  version: '0.0.193',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
   // the nest is left of the Giant Cake; ceiling = the highest the scout can be
-  world: { left: -420, right: 3400, nestX: 0, nestRadius: 16, ceiling: 2500 },
+  world: { left: -420, right: 3400, nestX: 0, nestRadius: 16, ceiling: 2500, exitGap: 0.2 },
 
   cell: 6,
   antLength: 10, // world units

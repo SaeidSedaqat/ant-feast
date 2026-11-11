@@ -238,6 +238,14 @@
     // can this ant type bite the top of column c? workers can't crack the chocolate shell
     canEat(t, c) { return !(t === 'worker' && this.cake.topKind(c) === 'chocolate'); }
 
+    // the tallest column this ant can bite within 2 of c (c wins ties): ants eat the cake down layer by layer, never digging pits
+    levelSpot(c, t) {
+      const H = this.cake.h, n = this.cake.cols;
+      let best = c;
+      for (let k = c - 2; k <= c + 2; k++) if (k >= 0 && k < n && H[k] > H[best] && this.canEat(t, k)) best = k;
+      return best;
+    }
+
     retarget(a) {
       if (a.state === 'back') return;
       this.setTarget(a, this.pick(a));
@@ -268,11 +276,11 @@
         // within each sample bucket, the tallest column this ant can bite (eat the high cells first)
         let c = -1;
         for (let k = c0; k < Math.min(hi + 1, c0 + stepC); k++) if (H[k] > 0 && (c < 0 || H[k] > H[c]) && this.canEat(t, k)) c = k;
-        if (c < 0) continue;
+        if (c < 0 || this.levelSpot(c, t) !== c) continue; // skip pits: a taller neighbour must go first
         const kind = cake.topKind(c), L = C.layers[kind];
         const top = cake.topH(c), x = cake.colCenter(c);
         let v = L.value * eff(kind) / L.hard;
-        const cost = 1 + ((x - nest) + top * 1.5) / 400;
+        const cost = 1 + Math.abs(x - nest) / 400 + top / 1600;
         if (L.sticky && t !== 'squad') v *= 0.6;
         const cl = this.claim[c >> 1] - ((c >> 1) === mine ? 1 : 0);
         const sc = v / cost / (1 + 8 * cl) * (0.9 + 0.2 * Math.random());
@@ -286,6 +294,7 @@
       const cake = this.cake, st = this.st, nest = C.world.nestX;
       const TS = {}; for (const t of TYPES) TS[t] = this.stats(t);
       let idle = 0;
+      this.exitT = Math.max(0, (this.exitT || 0) - dt); // ants leave the nest one at a time, in single file
       for (const a of this.ants) {
         const w = a.w, s = TS[a.type];
         let sticky = 1;
@@ -295,7 +304,7 @@
         }
         w.speed = s.speed * sticky; w.climb = s.climb * sticky; w.capacity = s.carry;
 
-        if (a.state === 'home') { this.retarget(a); if (a.state === 'home') { if (a.type === 'worker') idle++; w.moving = false; w.render(dt); this.drawMembers(a); continue; } }
+        if (a.state === 'home') { let tried = false; if (this.exitT <= 0) { tried = true; this.retarget(a); if (a.state !== 'home') this.exitT = C.world.exitGap; } if (a.state === 'home') { if (tried && a.type === 'worker') idle++; w.moving = false; w.render(dt); this.drawMembers(a); continue; } }
         if (a.state === 'out' && (a.tc < 0 || cake.h[a.tc] === 0 || !this.canEat(a.type, a.tc))) this.retarget(a);
 
         if (a.state === 'out') {
@@ -315,6 +324,7 @@
               }
               if (res.item) this.foundItem(res.item);
               if (w.load >= s.carry) this.goHome(a);
+              else { const nc = this.levelSpot(a.tc, a.type); if (nc !== a.tc) { this.setTarget(a, nc); a.state = 'out'; } } // step to a taller neighbour instead of tunnelling down
             }
           }
         } else if (a.state === 'back') {
