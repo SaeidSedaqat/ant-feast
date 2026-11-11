@@ -42,7 +42,7 @@
       this.selRing = this.add.image(0, 0, 'ring').setDepth(19).setTint(0x7ad0ff).setVisible(false);
       this.selSquad = null;
       this.parts = 0; this.gain = 0; this.gainT = 0; this.lastKind = null;
-      this.devSpeed = 1; this.uz = 1;
+      this.devSpeed = 1; this.showAll = false;
 
       this.applyScoutLook();
       this.setupInput();
@@ -132,7 +132,6 @@
       AF.pad = AF.pad || {};
       this.padWas = {};
       this.input.on('pointerdown', (p) => this.tap(p));
-      this.input.on('wheel', (p, o, dx, dy) => this.zoomBy(dy > 0 ? 0.9 : 1.1));
     }
 
     readInput() {
@@ -168,7 +167,7 @@
       }
     }
 
-    zoomBy(f) { const za = this.zAuto || 1; this.uz = clamp(this.uz * f, this.uzMin || 0.15, Math.max(1, C.camera.maxZoom / za)); } // zoom-in tops out at maxZoom on screen (or the auto view, if that is closer); zoom-out stops where the whole cake fits
+    toggleWhole() { this.showAll = !this.showAll; }
 
     // ---------- stats ----------
     boostMul(k) { return this.st.boosts[k] > 0 ? C.boosts[k] : 1; }
@@ -184,8 +183,8 @@
       if (t === 'squad') { bite *= this.squadMembers(); carry *= this.squadMembers(); }
       return { speed: T.speed * sp, climb: T.climb * sp, bite, carry, biteTime: T.biteTime };
     }
-    scoutCap(lv) { // grows from cap at Lv 1 to capMax at the top jaws level
-      const s = C.scout, t = ((lv || this.st.up.jaws) - 1) / (C.up.jaws.max - 1);
+    scoutCap(lv) { // cap at Lv 1, capMax at Lv capLv, and the same growth per level after that
+      const s = C.scout, t = ((lv || this.st.up.jaws) - 1) / (s.capLv - 1);
       return Math.round(s.cap * Math.pow(s.capMax / s.cap, t)) * this.boostMul('carry');
     }
 
@@ -389,7 +388,9 @@
 
     drawMembers(a) {
       if (!a.members) return;
-      const w = a.w, dir = w.flip ? 1 : -1;
+      const w = a.w, dir = w.flip ? 1 : -1, show = w.spr.visible;
+      if (a.members[0] && a.members[0].visible !== show) a.members.forEach((m) => m.setVisible(show));
+      if (!show) return; // off screen with its leader
       a.members.forEach((m, i) => {
         const ring = i % 2 ? 1 : -1;
         const x = w.x + dir * (4 + 3 * Math.floor(i / 2)) + ring * 1.5;
@@ -420,6 +421,7 @@
     updateScout(dt) {
       const sc = this.scout, st = this.st, inp = this.readInput();
       sc.capacity = this.scoutCap();
+      if (this.showAll && (inp.dx || inp.bite)) { this.showAll = false; AF.ui.wholeOff(); } // playing again goes back to the close view
       sc.drive({ dx: inp.dx || 0 }, dt);
 
       if (inp.bite) {
@@ -483,7 +485,8 @@
       const st = this.st;
       let steps = this.devSpeed > 1 ? Math.min(this.devSpeed, 20) : 1;
       for (let i = 0; i < steps; i++) this.tick(raw);
-      this.cake.flush();
+      this.flushT = (this.flushT || 0) + raw;
+      if (this.flushT > 0.06) { this.flushT = 0; this.cake.flush(); } // send bitten cake to the GPU a few times a second, not every frame
       this.updateFlames();
       this.updateCamera(raw, false);
       this.uiT += raw;
@@ -518,8 +521,10 @@
 
     // ---------- effects ----------
     spray(x, y, color, n) {
+      const v = this.cameras.main.worldView;
+      if (x < v.x - 20 || x > v.right + 20 || y < v.y - 20 || y > v.bottom + 20) return; // nobody sees it
       for (let i = 0; i < n; i++) {
-        if (this.parts > 120) return;
+        if (this.parts > 60) return;
         this.parts++;
         // a little crumb that hops up and drops
         const d = this.add.image(x, y, 'crumb').setTint(color).setScale(0.05 + Math.random() * 0.04).setDepth(18).setAngle(Math.random() * 360);
@@ -552,7 +557,7 @@
     }
 
     // ---------- camera ----------
-    // Starts close on the scout and eases out to frame the colony's work as it grows; +/- and the wheel zoom.
+    // Locked close on the scout. Tapping the "Cake eaten" bar toggles a view of the whole cake.
     updateCamera(dt, instant) {
       const cam = this.cameras.main, k = C.camera, DPR = AF.DPR, cake = this.cake;
       const W = this.scale.width, H = this.scale.height;
@@ -563,27 +568,13 @@
       const groundCss = Math.max(80, (cssH - AF.ui.barHeight()) * (portrait ? 0.72 : 0.85));
       const topCss = AF.ui.topHeight(), playBot = cssH - AF.ui.barHeight();
 
-      let fr = C.world.nestX + 80, ft = 60;
-      for (const a of this.ants) fr = Math.max(fr, a.w.x + 40);
-      fr = Math.max(fr, this.scout.x + 40);
-      fr = Math.min(fr, cake.x1 + 60);
-      const fl = C.world.nestX - 60;
-      for (let c = 0; c < cake.cols; c += 8) if (cake.colCenter(c) <= fr) ft = Math.max(ft, cake.topH(c) + 30);
       const zStart = portrait ? Math.max(2.2, cssW / k.portraitDiv) : Math.max(k.minStartZoom, Math.min(viewW, cssH) / k.startDiv);
-      const zFit = Math.min(viewW / (fr - fl), (groundCss * 0.92) / ft);
-      const units = this.units();
-      const p = units > 0 ? 0.25 + 0.75 * Math.pow(Math.min(1, units / 40), 0.7) : 0;
-      // auto zoom never goes so far out that ants become specks; the − button can still go further
-      const zAuto = Math.max(Math.min(zStart, zStart * Math.pow(zFit / zStart, p)), Math.min(zStart, 1.1));
-      this.zAuto = zAuto;
-      // the farthest zoom-out shows the whole cake, centered in the play area (beside the panel, between the top bar and the pad)
+      // the whole-cake view fits the cake in the play area (beside the panel, between the top bar and the pad)
       let cakeTop = 0;
       for (let c = 0; c < cake.cols; c += 4) cakeTop = Math.max(cakeTop, cake.topH(c));
       const zAll = Math.min(viewW / (cake.x1 - cake.x0 + 80), ((playBot - topCss) * 0.88) / Math.max(60, cakeTop + 20));
-      this.uzMin = Math.min(1, zAll / zAuto);
-      if (this.uz < this.uzMin) this.uz = this.uzMin;
-      const whole = zAuto * this.uz <= zAll * 1.001;
-      const zT = Math.min(zAuto * this.uz, Math.max(zAuto, k.maxZoom)) * DPR;
+      const whole = !!this.showAll;
+      const zT = (whole ? zAll : zStart) * DPR;
 
       if (instant || !this.zCur) this.zCur = zT;
       else this.zCur += (zT - this.zCur) * Math.min(1, dt * 3);

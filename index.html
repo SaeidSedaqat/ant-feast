@@ -52,7 +52,7 @@
     button.pill { color: #fff7e6; }
     #bPanel { font-weight: 800; background: linear-gradient(#ffb44a, #e8862a); color: #3b1d08; border-color: rgba(255, 255, 255, 0.3); box-shadow: 0 2px 0 #a8561c, 0 4px 10px rgba(0, 0, 0, 0.3); }
     #bPanel.on { background: linear-gradient(#ffe29a, #ffc85a); }
-    #bZin, #bZout { width: 2em; padding: 0.3em 0; text-align: center; font-weight: 800; }
+    #eaten { cursor: pointer; } #eaten:hover, #eaten.on { box-shadow: 0 0 0 2px #ffcf6b inset; }
     i.n { font-style: normal; display: inline-block; min-width: 1.3em; padding: 0 0.3em; margin-left: 0.3em; border-radius: 99px;
       background: #d8434f; color: #fff; font-size: 0.8em; font-weight: 800; text-align: center; box-sizing: border-box; }
     #side { position: fixed; left: max(8px, env(safe-area-inset-left)); top: 54px; bottom: 8px; width: min(330px, 92vw); z-index: 5;
@@ -140,8 +140,6 @@
       <div class="pill small" id="boosts" hidden></div>
       <div id="spacer"></div>
       <div class="pill small" id="time"></div>
-      <button class="pill small" id="bZout" aria-label="Zoom out">−</button>
-      <button class="pill small" id="bZin" aria-label="Zoom in">+</button>
       <button class="pill small" id="bMute"></button>
       <button class="pill small" id="bReset">Restart</button>
       <div class="pill small" id="ver"></div>
@@ -191,9 +189,9 @@
     // Byte-weighted loader: download every script with progress, then run them in order.
     var files = [
       ['lib/phaser-4.2.1.min.js', 1375976],
-      ['src/config.js?v=0.0.228', 6000], ['src/food.js?v=0.0.228', 14000], ['src/art.js?v=0.0.228', 12000],
-      ['src/walker.js?v=0.0.228', 5000], ['src/support.js?v=0.0.228', 8000], ['src/ui.js?v=0.0.228', 9000],
-      ['src/GameScene.js?v=0.0.228', 50000], ['src/main.js?v=0.0.228', 1500]
+      ['src/config.js?v=0.0.238', 6000], ['src/food.js?v=0.0.238', 14000], ['src/art.js?v=0.0.238', 12000],
+      ['src/walker.js?v=0.0.238', 5000], ['src/support.js?v=0.0.238', 8000], ['src/ui.js?v=0.0.238', 9000],
+      ['src/GameScene.js?v=0.0.238', 50000], ['src/main.js?v=0.0.238', 1500]
     ];
     var bar = document.getElementById('lbar'), pct = document.getElementById('lpct');
     var total = 0, got = files.map(function () { return 0; }), shown = 0, texts = [];

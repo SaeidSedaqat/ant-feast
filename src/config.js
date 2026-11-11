@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.228',
+  version: '0.0.238',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -51,7 +51,7 @@ AF.config = {
   },
   boosts: { speed: 1.5, bite: 2, carry: 2 },
 
-  scout: { speed: 90, climb: 80, biteTime: 0.18, cap: 15, capMax: 300, scale: 1.4 },
+  scout: { speed: 90, climb: 80, biteTime: 0.18, cap: 15, capMax: 300, capLv: 10, scale: 1.4 }, // carry grows from cap to capMax by Lv capLv, and keeps growing past it
 
   // ant types: traits, not roles. hire = first price, hireG = growth, costMul scales their stat upgrades
   types: {
@@ -62,8 +62,8 @@ AF.config = {
 
   // upgrades: price of the next level = base * g^(level - start); `costs` lists fixed prices instead
   up: {
-    legs: { base: 15, g: 1.6, max: 10, start: 1 },
-    jaws: { base: 12, g: 1.65, max: 10, start: 1 },
+    legs: { base: 15, g: 1.6, max: Infinity, start: 1 },
+    jaws: { base: 12, g: 1.65, max: Infinity, start: 1 },
     nest: { base: 100, g: 1.4, max: Infinity, start: 1 },
     value: { base: 120, g: 1.9, max: Infinity, start: 1 },
     'unlock.strong': { costs: [200], max: 1, start: 0 },
@@ -80,6 +80,5 @@ AF.config = {
     startDiv: 260,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
     portraitDiv: 150,   // portrait: start zoom = screen width / portraitDiv
     minStartZoom: 1.6,
-    maxZoom: 3,         // the + button and the wheel zoom in at most this much past the auto zoom
   },
 };

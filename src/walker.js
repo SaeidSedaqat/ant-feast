@@ -82,7 +82,12 @@
     settle(dt) {
       const s = this.S(this.x);
       if (this.h <= s + 0.01) { if (this.h < s) this.h = s; if (this.mode === 'down') this.mode = 'walk'; return; }
-      if (this.S(this.x + this.look) >= this.h - 0.01 || this.S(this.x - this.look) >= this.h - 0.01) return; // holding a wall
+      const fwd = this.flip ? -1 : 1;
+      const wallF = this.S(this.x + fwd * this.look) >= this.h - 0.01, wallB = this.S(this.x - fwd * this.look) >= this.h - 0.01;
+      if (wallF || wallB) { // holding a wall: hang on it head-up (wall ahead) or head-down (wall behind), never flat in the air
+        if (this.mode === 'walk') this.mode = wallF ? 'up' : 'down';
+        return;
+      }
       this.h = Math.max(s, this.h - this.climb * dt); this.mode = 'down'; this.moving = true;
       if (this.h <= s + 0.01) this.mode = 'walk';
     }
@@ -111,8 +116,19 @@
       let target = 0;
       if (this.mode === 'up') target = this.flip ? Math.PI / 2 : -Math.PI / 2;
       else if (this.mode === 'down') target = this.flip ? -Math.PI / 2 : Math.PI / 2;
+      // off screen: hide it and skip the drawing work (the camera is close, so most ants are out of view)
+      const v = this.scene.cameras.main.worldView, m = 30, sy = -this.h;
+      if (this.x < v.x - m || this.x > v.right + m || sy < v.y - m || sy > v.bottom + m) {
+        if (this.spr.visible) { this.spr.setVisible(false); this.shadow.setVisible(false); this.crumb.setVisible(false); }
+        this.rot = target; this.ox = 0;
+        return;
+      }
+      if (!this.spr.visible) { this.spr.setVisible(true); this.shadow.setVisible(true); this.ox = this.feetOffset(); }
       this.rot += (target - this.rot) * Math.min(1, dt * 16);
-      this.ox += (this.feetOffset() - this.ox) * Math.min(1, dt * 20);
+      if (this.moving || this._fx !== this.x || this._fh !== this.h || this._fm !== this.mode) { // the feet only move when the ant does
+        this._fx = this.x; this._fh = this.h; this._fm = this.mode; this._fo = this.feetOffset();
+      }
+      this.ox += (this._fo - this.ox) * Math.min(1, dt * 20);
       if (this.moving) {
         this.animT += dt;
         if (this.animT > 0.09) { this.animT = 0; this.frame = (this.frame + 1) % AF.ANT_FRAMES; this.spr.setTexture(this.key + this.frame); }

@@ -25,8 +25,7 @@
       $('bReset').onclick = () => { if (confirm('Start over? Your progress will be erased.')) scene.resetGame(); };
       $('bAgain').onclick = () => scene.resetGame();
       $('bKeep').onclick = () => { $('win').hidden = true; this.keepGoing = true; };
-      $('bZin').onclick = () => scene.zoomBy(1.25);
-      $('bZout').onclick = () => scene.zoomBy(0.8);
+      $('eaten').onclick = () => { scene.toggleWhole(); $('eaten').classList.toggle('on', !!scene.showAll); };
       $('bPanel').onclick = () => this.openPanel(!this.panelOpen);
       $('bClose').onclick = () => this.openPanel(false);
       this.openPanel(window.innerWidth >= 900 && !(window.matchMedia && matchMedia('(pointer: coarse)').matches));
@@ -41,6 +40,7 @@
       if (!ok) return;
       el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
     },
+    wholeOff() { $('eaten').classList.remove('on'); },
     openPanel(on) {
       this.panelOpen = on;
       $('side').hidden = !on;
