@@ -58,6 +58,7 @@
       window.addEventListener('pagehide', persist);
       document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 
+      if (this.st.won && this.cake.left > 0) this.st.won = false; // a new cake shape: the old win does not count
       if (this.st.won) AF.ui.showWin(this.st.time);
       this.refreshUI();
       this.updateCamera(0, true);

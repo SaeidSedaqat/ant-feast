@@ -7,6 +7,7 @@
   const KI = {}; KINDS.forEach((k, i) => { KI[k] = i; });
   const LAY = KINDS.map((k) => C.layers[k]);
   const SPR = [[255, 92, 120], [90, 190, 255], [255, 226, 70], [120, 220, 120], [190, 120, 255], [255, 255, 255]];
+  const SHAPE = 2; // bump when the cake's shape changes so old saved columns are not applied to it
   const PX = 3; // canvas pixels per cell (nearest filtering keeps them crisp)
 
   function hash(a, b) {
@@ -37,28 +38,36 @@
     }
 
     // ---------- shape ----------
-    bodyTop(c) {
-      const sh = K.shoulder, d = Math.min(c, this.cols - 1 - c);
-      if (d >= sh) return this.body;
-      const t = (sh - d) / sh;
-      return this.body - Math.round(sh * (1 - Math.sqrt(1 - t * t)));
+    // tier index of a column d columns in from the nearer edge (the highest tier that covers it)
+    tierOfD(d) { let i = 0; for (let t = 0; t < K.tiers.length; t++) if (d >= K.tiers[t][0]) i = t; return i; }
+    // tier index that holds row r
+    tierOfRow(r) { for (let t = 0; t < K.tiers.length; t++) if (r < K.tiers[t][1]) return t; return K.tiers.length - 1; }
+    // body top row at distance d from the edge, rounded at each tier's shoulder; frost = frosting thickness there
+    topAtD(d) {
+      const ti = this.tierOfD(d), [inset, top] = K.tiers[ti], sh = K.shoulder, dd = d - inset;
+      const frost = ti === K.tiers.length - 1 ? K.frosting : K.ledge;
+      if (dd >= sh) return { top, frost, ti };
+      const t = (sh - dd) / sh;
+      return { top: top - Math.round(sh * (1 - Math.sqrt(1 - t * t))), frost, ti };
     }
+    bodyTop(c) { return this.topAtD(Math.min(c, this.cols - 1 - c)).top; }
 
     buildShape() {
       const cols = this.cols, rows = this.rows, b = K.bands, cd = K.candles;
+      const lo = K.tiers[K.tiers.length - 1][0] + K.shoulder + 10, span = cols - 2 * lo; // candles stand on the top tier
       for (let i = 0; i < cd.n; i++) {
-        const c0 = Math.round(((i + 1) * cols) / (cd.n + 1)) - 1;
+        const c0 = lo + Math.round(((i + 1) * span) / (cd.n + 1)) - 1;
         for (let k = 0; k < cd.w; k++) this.candleCols.push(c0 + k);
       }
       for (let c = 0; c < cols; c++) {
-        const top = this.bodyTop(c);
+        const d = Math.min(c, cols - 1 - c), { top, frost } = this.topAtD(d);
         const candle = this.candleCols.indexOf(c) >= 0;
         this.full[c] = candle ? rows : top;
-        const side = c < K.coat || c >= cols - K.coat;
         for (let r = 0; r < this.full[c]; r++) {
+          const side = d - K.tiers[this.tierOfRow(r)][0] < K.coat; // frosting coat on each tier's side
           let k;
           if (r >= top) k = KI.candle;
-          else if (r >= top - K.frosting || side) k = hash(c, r * 7 + 1) < K.sprinkle && r >= top - 3 ? KI.sprinkle : KI.frosting;
+          else if (r >= top - frost || side) k = hash(c, r * 7 + 1) < K.sprinkle && r >= top - 3 ? KI.sprinkle : KI.frosting;
           else if (r < b.biscuit) k = KI.biscuit;
           else if (r < b.cream) k = KI.cream;
           else if (r < b.chocolate) k = KI.chocolate;
@@ -80,9 +89,12 @@
         const it = C.items[key], rg = band[it.layer];
         for (let i = 0; i < it.n; i++) {
           seed++;
-          const span = this.cols - 2 * margin;
-          const c = Math.floor(margin + span * ((i + 0.2 + 0.6 * hash(seed, 3)) / it.n));
           const r = Math.floor(rg[0] + (rg[1] - rg[0] - 3) * hash(seed, 9));
+          // keep it inside the tier at that height, under the frosting
+          let m = margin;
+          for (let d = 0; d < this.cols / 2; d++) { const t = this.topAtD(d); if (t.top - t.frost - 3 > r + 3 && d - K.tiers[t.ti][0] >= K.shoulder) { m = Math.max(margin, d + 20); break; } }
+          const span = this.cols - 2 * m;
+          const c = Math.floor(m + span * ((i + 0.2 + 0.6 * hash(seed, 3)) / it.n));
           const idx = this.items.length;
           this.items.push({ key, c, r, found: false });
           for (let dc = 0; dc < 3; dc++) for (let dr = 0; dr < 3; dr++) {
@@ -97,6 +109,7 @@
 
     restore(s) {
       this.h.set(this.full);
+      if (!s || s.shape !== SHAPE) s = null; // a save from an older cake shape starts a fresh cake (crumbs and upgrades stay)
       if (s && Array.isArray(s.h) && s.h.length === this.cols) {
         for (let c = 0; c < this.cols; c++) this.h[c] = Math.max(0, Math.min(this.full[c], s.h[c] | 0));
       }
@@ -108,7 +121,7 @@
     encode() {
       const found = [];
       this.items.forEach((it, i) => { if (it.found) found.push(i); });
-      return { h: Array.from(this.h), found };
+      return { shape: SHAPE, h: Array.from(this.h), found };
     }
 
     // ---------- queries ----------

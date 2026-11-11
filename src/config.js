@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.158',
+  version: '0.0.159',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -15,7 +15,11 @@ AF.config = {
   // The Giant Cake: about 100 times the old cake. Rows/cols are cells; layers are listed bottom-up in `bands`.
   cake: {
     x0: 150, cols: 1000, rows: 220, stand: 6, standPad: 40,
-    shoulder: 22,      // rounded top edge, in columns
+    shoulder: 14,      // rounded top edge of each tier, in columns
+    // stacked tiers, bottom-up: [inset in columns on each side, top row]. Each tier is narrower, so ants climb
+    // step by step over the ledges. The last top must equal rows - candles.rows.
+    tiers: [[0, 92], [130, 140], [260, 180]],
+    ledge: 7,          // frosting thickness on the lower tiers' ledges
     coat: 3,           // frosting coat on the sides
     frosting: 16,      // frosting thickness on top
     sprinkle: 0.07,    // share of frosting cells that are sprinkles
