@@ -187,6 +187,7 @@
       st.crumbs -= price;
       apply();
       AF.audio.blip(780);
+      this.applyScoutLook(); // legs change the scout's speed right away, not only on load
       this.refreshUI();
       this.persist();
     }
