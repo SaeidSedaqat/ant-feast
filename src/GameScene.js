@@ -145,7 +145,7 @@
     flagTime() { return 15; }
     flagRadius() { return 70; }
 
-    zoomBy(f) { this.uz = clamp(this.uz * f, 0.15, C.camera.maxZoom); }
+    zoomBy(f) { const za = this.zAuto || 1; this.uz = clamp(this.uz * f, 0.15, Math.max(1, C.camera.maxZoom / za)); } // zoom-in tops out at maxZoom on screen (or the auto view, if that is closer)
 
     // ---------- stats ----------
     boostMul(k) { return this.st.boosts[k] > 0 ? C.boosts[k] : 1; }
@@ -534,7 +534,8 @@
       const p = units > 0 ? 0.25 + 0.75 * Math.pow(Math.min(1, units / 40), 0.7) : 0;
       // auto zoom never goes so far out that ants become specks; the − button can still go further
       const zAuto = Math.max(Math.min(zStart, zStart * Math.pow(zFit / zStart, p)), Math.min(zStart, 1.1));
-      const zT = zAuto * this.uz * DPR;
+      this.zAuto = zAuto;
+      const zT = Math.min(zAuto * this.uz, Math.max(zAuto, k.maxZoom)) * DPR;
 
       if (instant || !this.zCur) this.zCur = zT;
       else this.zCur += (zT - this.zCur) * Math.min(1, dt * 3);
