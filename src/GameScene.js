@@ -567,11 +567,11 @@
       const lvTxt = (lv, start) => (lv > start || start > 0 ? 'Lv ' + lv : '');
       const U = (tab, id, title, desc, show) => rows.push({ tab, id, title, desc, lv: lvTxt(up[id], C.up[id].start), price: this.upPrice(id), show });
       // every row reads "+X each, Y now"; a maxed row shows only the "now" part
-      const D = (each, now, maxed) => maxed ? now + ' now' : `+${each} each, ${now} now`;
+      const D = (each, now, maxed, w) => maxed ? now + ' now' : `+${each} ${w || 'each'}, ${now} now`;
       const r1 = (v) => String(Math.round(v * 10) / 10);
       const lm = (id) => up[id] >= C.up[id].max;
       U('scout', 'legs', 'Legs', 'Walk and climb faster. ' + D('15%', Math.round(100 + 15 * (up.legs - 1)) + '%', lm('legs')));
-      U('scout', 'jaws', 'Jaws', 'Bite harder, carry more. ' + D(Math.round(this.scoutCap(up.jaws + 1) - this.scoutCap()), Math.round(this.scoutCap()), lm('jaws')));
+      U('scout', 'jaws', 'Jaws', 'Bite harder, carry more. ' + D(Math.round(this.scoutCap(up.jaws + 1) - this.scoutCap()), Math.round(this.scoutCap()), lm('jaws'), 'next'));
 
       const cap = this.nestCap(), used = this.units();
       for (const t of TYPES) {
