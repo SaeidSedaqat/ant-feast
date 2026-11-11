@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.210',
+  version: '0.0.211',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -64,7 +64,7 @@ AF.config = {
   up: {
     legs: { base: 15, g: 1.6, max: 10, start: 1 },
     jaws: { base: 12, g: 1.65, max: 10, start: 1 },
-    nest: { base: 20, g: 1.3, max: Infinity, start: 1 },
+    nest: { base: 100, g: 1.4, max: Infinity, start: 1 },
     value: { base: 120, g: 1.9, max: Infinity, start: 1 },
     'unlock.strong': { costs: [200], max: 1, start: 0 },
     'unlock.squad': { costs: [2500], max: 1, start: 0 },
