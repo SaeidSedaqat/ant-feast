@@ -7,7 +7,7 @@
   const KI = {}; KINDS.forEach((k, i) => { KI[k] = i; });
   const LAY = KINDS.map((k) => C.layers[k]);
   const SPR = [[255, 92, 120], [90, 190, 255], [255, 226, 70], [120, 220, 120], [190, 120, 255], [255, 255, 255]];
-  const SHAPE = 2; // bump when the cake's shape changes so old saved columns are not applied to it
+  const SHAPE = 3; // bump when the cake's shape changes so old saved columns are not applied to it
   const PX = 6; // canvas pixels per cell: enough room for each layer's texture when the camera is close
 
   function hash(a, b) {

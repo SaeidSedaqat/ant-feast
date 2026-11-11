@@ -12,7 +12,7 @@
     if (n >= 1e5) return Math.floor(n / 1e3) + 'K';
     return n.toLocaleString();
   };
-  const TABS = ['scout', 'ants', 'colony', 'tools'];
+  const TABS = ['scout', 'ants', 'colony'];
 
   AF.fmt = fmt;
   AF.ui = {
@@ -82,7 +82,7 @@
         ['Sponge', () => scene.dev('layer', L.rows - L.candles.rows - L.frosting)], ['Jam', () => scene.dev('layer', L.bands.jam)],
         ['Choc', () => scene.dev('layer', L.bands.chocolate)], ['Cream', () => scene.dev('layer', L.bands.cream)],
         ['Biscuit', () => scene.dev('layer', L.bands.biscuit)], ['Almost', () => scene.dev('layer', 1)],
-        ['Unlock', () => scene.dev('unlock')], ['Sniff', () => scene.dev('sniff')],
+        ['Unlock', () => scene.dev('unlock')],
       ];
       d.innerHTML = '<b>DEV</b>';
       for (const [t, f] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = f; d.appendChild(b); }
@@ -134,7 +134,6 @@
       this.renderRows(v.rows, v.crumbs);
       const tb = Math.round($('top').getBoundingClientRect().bottom + 6) + 'px'; // the top bar can wrap to two rows
       if ($('side').style.top !== tb) $('side').style.top = tb;
-      for (const k of ['up', 'chomp', 'rally']) { const b = document.querySelector(`#pad [data-k="${k}"]`); if (b) b.hidden = !v.pad[k]; }
     },
 
     hint(text) {

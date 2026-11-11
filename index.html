@@ -117,19 +117,17 @@
     <div id="fill"></div>
     <div id="pad" hidden>
       <div class="grp"><button data-k="left" aria-label="Walk left">◀</button><button data-k="right" aria-label="Walk right">▶</button></div>
-      <div class="grp"><button data-k="up" aria-label="Jump or fly up" hidden>▲</button><button data-k="down" aria-label="Fly down" hidden>▼</button></div>
-      <div class="grp"><button data-k="rally" class="sm" hidden>RALLY</button><button data-k="chomp" class="sm" hidden>CHOMP</button><button data-k="bite" class="bite">BITE</button></div>
+      <div class="grp"><button data-k="bite" class="bite">BITE</button></div>
     </div>
   </div>
   <div id="toasts"></div>
   <div id="side" hidden>
     <div class="tabs">
-      <button id="t_scout">Scout</button><button id="t_ants">Ants</button><button id="t_colony">Colony</button><button id="t_tools">Tools</button>
+      <button id="t_scout">Scout</button><button id="t_ants">Ants</button><button id="t_colony">Colony</button>
     </div>
     <div class="pane" id="p_scout"></div>
     <div class="pane" id="p_ants" hidden></div>
     <div class="pane" id="p_colony" hidden></div>
-    <div class="pane" id="p_tools" hidden></div>
   </div>
   <div id="dev" hidden></div>
   <div id="win" hidden>
@@ -163,9 +161,9 @@
     // Byte-weighted loader: download every script with progress, then run them in order.
     var files = [
       ['lib/phaser-4.2.1.min.js', 1375976],
-      ['src/config.js?v=0.0.162', 6000], ['src/food.js?v=0.0.162', 14000], ['src/art.js?v=0.0.162', 12000],
-      ['src/walker.js?v=0.0.162', 5000], ['src/support.js?v=0.0.162', 8000], ['src/ui.js?v=0.0.162', 9000],
-      ['src/GameScene.js?v=0.0.162', 50000], ['src/main.js?v=0.0.162', 1500]
+      ['src/config.js?v=0.0.182', 6000], ['src/food.js?v=0.0.182', 14000], ['src/art.js?v=0.0.182', 12000],
+      ['src/walker.js?v=0.0.182', 5000], ['src/support.js?v=0.0.182', 8000], ['src/ui.js?v=0.0.182', 9000],
+      ['src/GameScene.js?v=0.0.182', 50000], ['src/main.js?v=0.0.182', 1500]
     ];
     var bar = document.getElementById('lbar'), pct = document.getElementById('lpct');
     var total = 0, got = files.map(function () { return 0; }), shown = 0, texts = [];

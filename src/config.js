@@ -1,24 +1,23 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.162',
+  version: '0.0.182',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
-  // the nest is left of the Giant Cake; ceiling = how high the scout can fly
-  world: { left: -420, right: 6480, nestX: 0, nestRadius: 16, ceiling: 2500 },
+  // the nest is left of the Giant Cake; ceiling = the highest the scout can be
+  world: { left: -420, right: 3400, nestX: 0, nestRadius: 16, ceiling: 2500 },
 
   cell: 6,
   antLength: 10, // world units
-  ant: { gap: 12 }, // spacing of ants walking single file
 
-  // The Giant Cake: about 100 times the old cake. Rows/cols are cells; layers are listed bottom-up in `bands`.
+  // The Giant Cake: half the width of the first Giant Cake. Rows/cols are cells; layers are listed bottom-up in `bands`.
   cake: {
-    x0: 150, cols: 1000, rows: 220, stand: 6, standPad: 40,
+    x0: 150, cols: 500, rows: 220, stand: 6, standPad: 40,
     shoulder: 14,      // rounded top edge of each tier, in columns
     // stacked tiers, bottom-up: [inset in columns on each side, top row]. Each tier is narrower, so ants climb
     // step by step over the ledges. The last top must equal rows - candles.rows.
-    tiers: [[0, 92], [130, 140], [260, 180]],
+    tiers: [[0, 92], [65, 140], [130, 180]],
     ledge: 7,          // frosting thickness on the lower tiers' ledges
     // filling stripes inside the upper tiers: [from row, to row, layer]. The bottom tier uses `bands`.
     tierBands: [[100, 106, 'cream'], [114, 120, 'jam'], [146, 150, 'chocolate'], [155, 160, 'cream']],
@@ -45,54 +44,42 @@ AF.config = {
 
   // hidden treats: a burst of crumbs (times crumb value) and a timed boost for the whole colony
   items: {
-    banana: { name: 'Banana slice', n: 8, layer: 'sponge', burst: 400, boost: 'speed', time: 30, color: [250, 226, 120] },
-    cherry: { name: 'Cherry', n: 6, layer: 'cream', burst: 2500, boost: 'bite', time: 30, color: [205, 24, 46] },
-    chunk: { name: 'Chocolate chunk', n: 6, layer: 'biscuit', burst: 6000, boost: 'carry', time: 30, color: [70, 38, 20] },
+    banana: { name: 'Banana slice', n: 5, layer: 'sponge', burst: 400, boost: 'speed', time: 30, color: [250, 226, 120] },
+    cherry: { name: 'Cherry', n: 4, layer: 'cream', burst: 2500, boost: 'bite', time: 30, color: [205, 24, 46] },
+    chunk: { name: 'Chocolate chunk', n: 4, layer: 'biscuit', burst: 6000, boost: 'carry', time: 30, color: [70, 38, 20] },
     treasure: { name: 'Golden ring', n: 1, layer: 'biscuit', burst: 60000, boost: 'all', time: 60, color: [255, 205, 50] },
   },
   boosts: { speed: 1.5, bite: 2, carry: 2 },
 
-  scout: { speed: 90, climb: 80, biteTime: 0.18, capPerJaw: 8, scale: 1.4, gravity: 650, hop: 55, glide: 45, fly: 140, chompCd: 3 },
+  scout: { speed: 90, climb: 80, biteTime: 0.18, capPerJaw: 8, scale: 1.4 },
 
   // ant types: traits, not roles. hire = first price, hireG = growth, costMul scales their stat upgrades
   types: {
-    worker: { name: 'Worker', speed: 80, climb: 70, carry: 4, bite: 1, biteTime: 0.3, hire: 12, hireG: 1.09, costMul: 1, tex: 'ant', scale: 1 },
-    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 90, hireG: 1.12, costMul: 4, tex: 'strong', scale: 1.3 },
-    flying: { name: 'Flying ant', speed: 120, climb: 120, carry: 3, bite: 1, biteTime: 0.3, hire: 220, hireG: 1.13, costMul: 10, tex: 'flyer', scale: 1.05 },
-    squad: { name: 'Squad', speed: 72, climb: 64, carry: 5, bite: 1.3, biteTime: 0.3, hire: 1500, hireG: 1.35, costMul: 25, tex: 'squad', scale: 1.1, max: 10 },
+    worker: { name: 'Worker', speed: 80, climb: 70, carry: 4, bite: 1, biteTime: 0.3, hire: 8, hireG: 1.06, costMul: 1, tex: 'ant', scale: 1 },
+    strong: { name: 'Strong ant', speed: 62, climb: 54, carry: 6, bite: 1, biteTime: 0.32, hire: 45, hireG: 1.08, costMul: 2.5, tex: 'strong', scale: 1.3 },
+    squad: { name: 'Squad', speed: 72, climb: 64, carry: 5, bite: 1.3, biteTime: 0.3, hire: 500, hireG: 1.25, costMul: 10, tex: 'squad', scale: 1.1, max: 10 },
   },
 
   // upgrades: price of the next level = base * g^(level - start); `costs` lists fixed prices instead
   up: {
-    legs: { base: 30, g: 1.8, max: 12, start: 1 },
-    jaws: { base: 25, g: 1.9, max: 12, start: 1 },
-    bigbite: { base: 150, g: 2.3, max: 6, start: 0 },
-    aura: { base: 400, g: 2.1, max: 8, start: 0 },
-    scent: { base: 250, g: 2.1, max: 6, start: 0 },
-    rally: { base: 600, g: 2.2, max: 6, start: 0 },
-    wings: { costs: [800, 6000, 40000], max: 3, start: 0 },
-    nest: { base: 40, g: 1.5, max: 30, start: 1 },
-    value: { base: 250, g: 2.2, max: 15, start: 1 },
-    'unlock.strong': { costs: [600], max: 1, start: 0 },
-    'unlock.flying': { costs: [3000], max: 1, start: 0 },
-    'unlock.squad': { costs: [10000], max: 1, start: 0 },
-    flagPow: { base: 80, g: 1.8, max: 10, start: 1 },
-    flagTime: { base: 60, g: 1.7, max: 10, start: 1 },
-    squadSize: { base: 4000, g: 2.5, max: 5, start: 1 },
-    trails: { base: 300, g: 1.9, max: 12, start: 1 },
-    sniffer: { base: 1500, g: 2.3, max: 8, start: 0 },
+    legs: { base: 15, g: 1.6, max: 12, start: 1 },
+    jaws: { base: 12, g: 1.65, max: 12, start: 1 },
+    nest: { base: 20, g: 1.3, max: 30, start: 1 },
+    value: { base: 120, g: 1.9, max: 15, start: 1 },
+    'unlock.strong': { costs: [200], max: 1, start: 0 },
+    'unlock.squad': { costs: [2500], max: 1, start: 0 },
   },
   typeUp: { // per ant type, times the type's costMul
-    speed: { base: 50, g: 1.75, max: 15, start: 1 },
-    carry: { base: 40, g: 1.75, max: 15, start: 1 },
-    bite: { base: 60, g: 1.8, max: 15, start: 1 },
+    speed: { base: 25, g: 1.55, max: 15, start: 1 },
+    carry: { base: 20, g: 1.55, max: 15, start: 1 },
+    bite: { base: 30, g: 1.6, max: 15, start: 1 },
   },
-  nestBase: 10, nestPer: 10, // ants the nest holds: base + per * (level - 1)
+  nestBase: 15, nestPer: 15, // ants the nest holds: base + per * (level - 1)
 
   camera: {
     startDiv: 260,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
     portraitDiv: 150,   // portrait: start zoom = screen width / portraitDiv
     minStartZoom: 1.6,
-    lead: 60,           // camera looks this far ahead of the scout
+    maxZoom: 2,         // the + button and the wheel zoom in at most this much past the auto zoom
   },
 };

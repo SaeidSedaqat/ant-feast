@@ -58,13 +58,6 @@
       mk(scene, 'soldier' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#5a1410', '#c0503a', true));
       mk(scene, 'strong' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#5a1410', '#c0503a', true));
       mk(scene, 'squad' + f, ANT_W, ANT_H, (g) => drawAnt(g, f, '#1e3a5a', '#5a8ac0'));
-      const wings = (g, up) => { // translucent wings over the thorax; two beats
-        g.fillStyle = 'rgba(220,240,255,0.65)'; g.strokeStyle = 'rgba(120,150,190,0.9)'; g.lineWidth = 1.5;
-        g.beginPath(); g.ellipse(40, up ? 8 : 14, 22, up ? 7 : 5, up ? -0.5 : -0.15, 0, Math.PI * 2); g.fill(); g.stroke();
-        g.beginPath(); g.ellipse(36, up ? 12 : 17, 16, 4.5, up ? -0.3 : -0.05, 0, Math.PI * 2); g.fill(); g.stroke();
-      };
-      mk(scene, 'flyer' + f, ANT_W, ANT_H, (g) => { drawAnt(g, f, '#3a2a10', '#a08040'); wings(g, f === 0); });
-      mk(scene, 'scoutw' + f, ANT_W, ANT_H, (g) => { drawAnt(g, f, '#9a4a0c', '#ffc46b'); wings(g, f === 0); });
     }
     mk(scene, 'flag', 32, 48, (g) => {
       g.strokeStyle = '#3b1d08'; g.lineWidth = 3; g.beginPath(); g.moveTo(6, 2); g.lineTo(6, 47); g.stroke();
