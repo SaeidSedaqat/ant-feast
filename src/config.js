@@ -1,7 +1,7 @@
 // All tuning values live here. World units: the table surface is y = 0, up is negative y.
 window.AF = window.AF || {};
 AF.config = {
-  version: '0.0.212',
+  version: '0.0.213',
   saveKey: 'antfeast-save-v3',
   display: { maxPixelRatio: 2 },
 
@@ -80,6 +80,6 @@ AF.config = {
     startDiv: 260,      // start zoom (css px per world unit) = min(screen w, h) / startDiv
     portraitDiv: 150,   // portrait: start zoom = screen width / portraitDiv
     minStartZoom: 1.6,
-    maxZoom: 2,         // the + button and the wheel zoom in at most this much past the auto zoom
+    maxZoom: 3,         // the + button and the wheel zoom in at most this much past the auto zoom
   },
 };
