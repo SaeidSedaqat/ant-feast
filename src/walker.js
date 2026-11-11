@@ -15,6 +15,7 @@
       this.mode = 'walk'; this.flip = false; this.rot = 0; this.ox = 0;
       this.animT = Math.random(); this.frame = 0; this.moving = false;
       this.load = 0; this.color = 0xe9b872;
+      this.odo = 0; // path walked and climbed since the game last read it (world units)
 
       this.half = C.antLength * this.sc * 0.45; // center to head
       this.reach = 1.5 + this.half * 0.6; // how far ahead of its middle the ant feels for walls
@@ -46,7 +47,7 @@
         // on a wall we are climbing, the ground under our x is lower but we hang on
         if (this.h > s + 0.01 && !(sAhead >= this.h - 0.01)) { // food eaten below us, or we walked off a ledge
           const d = Math.min(budget * climbRatio, this.h - s);
-          this.h -= d; budget -= d / climbRatio; this.mode = 'down'; this.moving = true; continue;
+          this.h -= d; this.odo += d; budget -= d / climbRatio; this.mode = 'down'; this.moving = true; continue;
         }
         if (this.h < s) this.h = s;
         const dx = tx - this.x;
@@ -58,9 +59,9 @@
         const ahead = this.S(nx + dir * Math.max(0, this.look - 1.5)); // the head meets the wall, not the middle
         if (ahead > this.h + 0.01) { // wall ahead: climb it
           const d = Math.min(budget * climbRatio, ahead - this.h);
-          this.h += d; budget -= d / climbRatio; this.mode = 'up'; this.moving = true; continue;
+          this.h += d; this.odo += d; budget -= d / climbRatio; this.mode = 'up'; this.moving = true; continue;
         }
-        this.x = nx; budget -= stepLen; this.mode = 'walk'; this.moving = true;
+        this.x = nx; this.odo += stepLen; budget -= stepLen; this.mode = 'walk'; this.moving = true;
       }
       if (arrived && this.mode !== 'walk' && this.h <= this.S(this.x) + 0.01) this.mode = 'walk';
       return arrived;

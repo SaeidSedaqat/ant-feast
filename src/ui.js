@@ -4,6 +4,13 @@
   const cache = {};
   function set(el, key, html) { if (cache[key] !== html) { cache[key] = html; el.innerHTML = html; } }
   const fmtTime = (s) => { s = Math.floor(s); const m = Math.floor(s / 60); return `${m}:${String(s % 60).padStart(2, '0')}`; };
+  // world units -> ant-world distance: an ant (10 units) is about 5 mm long, so 1 unit = 0.5 mm
+  const fmtDist = (u) => {
+    const mm = u * 0.5;
+    if (mm < 10) return mm.toFixed(1) + ' mm';
+    if (mm < 1000) return (mm < 100 ? (mm / 10).toFixed(1) : Math.round(mm / 10)) + ' cm';
+    return (mm / 1000).toFixed(mm < 1e5 ? 2 : 0) + ' m';
+  };
   const IC = '<i class="ic"></i>';
   const fmt = (n) => {
     n = Math.floor(n);
@@ -19,11 +26,11 @@
     init(scene) {
       this.scene = scene;
       this.rows = {};
-      $('ver').textContent = 'v' + AF.config.version;
+      $('ver').textContent = (scene.st.ngp > 0 ? `New Game+${scene.st.ngp > 1 ? ' ' + scene.st.ngp : ''} · ` : '') + 'v' + AF.config.version;
       $('bMute').textContent = AF.audio.muted ? 'Sound off' : 'Sound on';
       $('bMute').onclick = () => { $('bMute').textContent = AF.audio.toggle() ? 'Sound off' : 'Sound on'; };
       $('bReset').onclick = () => { if (confirm('Start over? Your progress will be erased.')) scene.resetGame(); };
-      $('bAgain').onclick = () => scene.resetGame();
+      $('bNgp').onclick = () => scene.newGamePlus();
       $('bKeep').onclick = () => { $('win').hidden = true; this.keepGoing = true; };
       $('eaten').onclick = () => { scene.toggleWhole(); $('eaten').classList.toggle('on', !!scene.showAll); };
       $('bPause').onclick = () => this.pause(true);
@@ -104,7 +111,7 @@
         ['Sponge', () => scene.dev('layer', L.rows - L.candles.rows - L.frosting)], ['Jam', () => scene.dev('layer', L.bands.jam)],
         ['Choc', () => scene.dev('layer', L.bands.chocolate)], ['Cream', () => scene.dev('layer', L.bands.cream)],
         ['Biscuit', () => scene.dev('layer', L.bands.biscuit)], ['Almost', () => scene.dev('layer', 1)],
-        ['Unlock', () => scene.dev('unlock')],
+        ['Unlock', () => scene.dev('unlock')], ['∞ crumbs', () => scene.dev('money')], ['End', () => scene.dev('end')],
       ];
       d.innerHTML = '<b>DEV</b>';
       for (const [t, f] of items) { const b = document.createElement('button'); b.textContent = t; b.onclick = f; d.appendChild(b); }
@@ -151,7 +158,6 @@
       $('colony').hidden = !v.colony;
       set($('boosts'), 'b', v.boosts);
       $('boosts').hidden = !v.boosts;
-      set($('time'), 'time', fmtTime(v.time));
       this.renderRows(v.rows, v.crumbs);
       const tb = Math.round($('top').getBoundingClientRect().bottom + 6) + 'px'; // the top bar can wrap to two rows
       if ($('side').style.top !== tb) $('side').style.top = tb;
@@ -175,9 +181,17 @@
       setTimeout(() => el.remove(), 4100);
     },
 
-    showWin(time) {
-      $('winTime').textContent = fmtTime(time);
+    // end-of-game stats: ants by type, distances in real ant-world units, the run time and the best time
+    showWin(v) {
+      const n = (k) => fmt(v.counts[k] || 0);
+      const row = (a, b, cls) => `<tr${cls ? ` class="${cls}"` : ''}><td>${a}</td><td>${b}</td></tr>`;
+      $('stTable').innerHTML =
+        row('Worker ants', n('worker')) + row('Strong ants', n('strong')) + row('Squads', `${n('squad')} <small>(${fmt((v.counts.squad || 0) * 5)} ants)</small>`) +
+        row('Your scout walked', fmtDist(v.dS), 'sep') + row('All ants walked', fmtDist(v.dA)) +
+        row('Time', fmtTime(v.time), 'sep') + row('Best time', fmtTime(v.best) + (v.rec ? ' <span class="rec">New record!</span>' : ''));
+      $('winNgp').textContent = v.ngp > 0 ? `New Game+${v.ngp > 1 ? ' ' + v.ngp : ''}: everything cost half` : '';
       $('win').hidden = false;
     },
+    hideWin() { $('win').hidden = true; this.keepGoing = false; },
   };
 })();

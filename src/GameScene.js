@@ -43,6 +43,7 @@
       this.selSquad = null;
       this.parts = 0; this.gain = 0; this.gainT = 0; this.lastKind = null;
       this.devSpeed = 1; this.showAll = false;
+      this.devMode = new URLSearchParams(location.search).get("dev") === "1"; this.devMoney = this.devMode;
 
       this.applyScoutLook();
       this.setupInput();
@@ -54,17 +55,21 @@
       document.addEventListener('visibilitychange', () => { if (document.hidden) persist(); });
 
       if (this.st.won && this.cake.left > 0) this.st.won = false; // a new cake shape: the old win does not count
-      if (this.st.won) AF.ui.showWin(this.st.time);
+      if (this.st.won) AF.ui.showWin(this.summary());
+      else if (this.st.ngp > 0 && !s.cake) AF.ui.toast('<b>New Game+</b> Everything costs half. Beat your best time!', true);
       this.refreshUI();
       this.updateCamera(0, true);
       if (window.AFLoaded) setTimeout(() => window.AFLoaded(), 60);
     }
 
     freshState(s) {
-      const st = { crumbs: 0, time: 0, won: false, hint: 0, up: {}, tu: {}, counts: {}, boosts: { speed: 0, bite: 0, carry: 0 } };
+      // ngp = New Game+ runs (any > 0: everything costs half), best = fastest finish, dS/dA = distance walked by the scout / everyone
+      const st = { crumbs: 0, time: 0, won: false, hint: 0, up: {}, tu: {}, counts: {}, boosts: { speed: 0, bite: 0, carry: 0 }, ngp: 0, best: 0, dS: 0, dA: 0 };
       for (const k of Object.keys(C.up)) st.up[k] = C.up[k].start;
       for (const t of TYPES) { st.tu[t] = { speed: 1, carry: 1, bite: 1 }; st.counts[t] = 0; }
       if (s.v !== 3) return st;
+      st.ngp = Math.max(0, s.ngp | 0); st.best = Math.max(0, +s.best || 0); st.rec = !!s.rec;
+      st.dS = Math.max(0, +s.dS || 0); st.dA = Math.max(0, +s.dA || 0);
       st.crumbs = Math.max(0, +s.crumbs || 0); st.time = Math.max(0, +s.time || 0);
       st.won = !!s.won; st.hint = s.hint | 0;
       if (s.up) for (const k of Object.keys(st.up)) if (typeof s.up[k] === 'number') st.up[k] = clamp(s.up[k] | 0, 0, C.up[k].max);
@@ -188,18 +193,19 @@
       return Math.round(s.cap * Math.pow(s.capMax / s.cap, t)) * this.boostMul('carry');
     }
 
+    priceMul() { return this.st.ngp > 0 ? 0.5 : 1; } // New Game+: everything costs half
     upPrice(key) {
       const u = C.up[key], lv = this.st.up[key];
       if (lv >= u.max) return null;
-      if (u.costs) return u.costs[lv - u.start];
-      return Math.ceil(u.base * Math.pow(u.g, lv - u.start));
+      if (u.costs) return Math.ceil(u.costs[lv - u.start] * this.priceMul());
+      return Math.ceil(u.base * Math.pow(u.g, lv - u.start) * this.priceMul());
     }
     typePrice(t, k) {
       const u = C.typeUp[k], lv = this.st.tu[t][k];
       if (lv >= u.max) return null;
-      return Math.ceil(u.base * C.types[t].costMul * Math.pow(u.g, lv - u.start));
+      return Math.ceil(u.base * C.types[t].costMul * Math.pow(u.g, lv - u.start) * this.priceMul());
     }
-    hirePrice(t) { const T = C.types[t]; return Math.ceil(T.hire * Math.pow(T.hireG, this.st.counts[t])); }
+    hirePrice(t) { const T = C.types[t]; return Math.ceil(T.hire * Math.pow(T.hireG, this.st.counts[t]) * this.priceMul()); }
 
     // ---------- buying ----------
     buy(id) {
@@ -375,6 +381,8 @@
             a.state = 'home';
           }
         }
+        if (!st.won) st.dA += w.odo * (a.type === 'squad' ? this.squadMembers() : 1); // a squad is 5 ants walking together
+        w.odo = 0;
         w.render(dt);
         this.drawMembers(a);
       }
@@ -423,6 +431,8 @@
       sc.capacity = this.scoutCap();
       if (this.showAll && (inp.dx || inp.bite)) { this.showAll = false; AF.ui.wholeOff(); } // playing again goes back to the close view
       sc.drive({ dx: inp.dx || 0 }, dt);
+      if (!st.won) { st.dS += sc.odo; st.dA += sc.odo; }
+      sc.odo = 0;
 
       if (inp.bite) {
         if (!this.biteWas) { this.biteT = 0; this.scoutBite(); }
@@ -511,12 +521,58 @@
         st.crumbs += n; this.gain += n;
         AF.ui.toast(`<b>Sweep!</b> The colony grabs the last ${AF.fmt(n)} crumbs`, true);
       }
+      if (this.devMoney) st.crumbs = Math.max(st.crumbs, 1e12); // ?dev=1: unlimited money
+      // the end: the cake is gone and the last chunk has been carried back into the nest
+      // (an ant that can't get home within 60 s doesn't hold up the ending)
       if (!st.won && this.cake.left <= 0) {
-        st.won = true;
-        this.persist();
-        AF.audio.blip(990);
-        this.time.delayedCall(600, () => AF.ui.showWin(st.time));
+        this.endWait = (this.endWait || 0) + dt;
+        if (this.scout.load === 0 && (this.endWait > 60 || this.ants.every((a) => a.w.load === 0))) this.finish();
       }
+    }
+
+    finish() {
+      const st = this.st;
+      st.won = true;
+      const best = st.best > 0 ? Math.min(st.best, st.time) : st.time;
+      st.rec = !(st.best > 0) || st.time < st.best;
+      if (!this.devMode) st.best = best; // dev shortcuts don't set records
+      this.endBest = best;
+      this.persist();
+      this.celebrate();
+      this.time.delayedCall(4000, () => AF.ui.showWin(this.summary()));
+    }
+
+    summary() {
+      const st = this.st;
+      return { counts: st.counts, dS: st.dS, dA: st.dA, time: st.time, best: this.endBest || st.best || st.time, rec: !!st.rec, ngp: st.ngp };
+    }
+
+    // party: colored lights and confetti float up behind everything for a few seconds
+    celebrate() {
+      const cols = [0xffd25a, 0xff8a4a, 0xff6fa8, 0x7ad0ff, 0xb8f07a, 0xffffff, 0xc89aff];
+      this.time.addEvent({
+        delay: 45, repeat: 75, callback: () => {
+          const cam = this.cameras.main, v = cam.worldView, z = cam.zoom;
+          for (let i = 0; i < 3; i++) {
+            const glow = Math.random() < 0.4;
+            const px = ((glow ? 14 + Math.random() * 22 : 6 + Math.random() * 7) * AF.DPR) / z;
+            const p = this.add.image(v.x + Math.random() * v.width, Math.min(v.bottom, 0) + px, glow ? 'glow' : 'crumb')
+              .setTint(cols[(Math.random() * cols.length) | 0]).setDepth(1).setScale(px / (glow ? 64 : 32))
+              .setAngle(Math.random() * 360).setAlpha(glow ? 0.75 : 1);
+            this.tweens.add({
+              targets: p, y: p.y - v.height * (0.5 + Math.random() * 0.7), x: p.x + (Math.random() - 0.5) * v.width * 0.12,
+              angle: p.angle + (Math.random() - 0.5) * 720, alpha: 0, duration: 2200 + Math.random() * 1800, ease: 'Sine.out',
+              onComplete: () => p.destroy(),
+            });
+          }
+        },
+      });
+      [523, 659, 784, 1047, 1319].forEach((f, i) => this.time.delayedCall(i * 150, () => AF.audio.blip(f)));
+      const nx = C.world.nestX;
+      this.ring(nx, -4); this.time.delayedCall(250, () => this.ring(nx, -10));
+      this.spray(nx, -4, 0xffe08a, 16);
+      this.floater(nx, -18, 'Cake finished!', 24);
+      AF.ui.toast('<b>The last crumb is home!</b> The Giant Cake is gone', true);
     }
 
     // ---------- effects ----------
@@ -622,9 +678,9 @@
         const full = used + (t === 'squad' ? 5 : 1) > cap;
         rows.push({ tab: 'ants', id: 'hire.' + t, title: 'Hire ' + T.name.toLowerCase(), desc: what, lv: '', price: T.max && n >= T.max ? null : this.hirePrice(t), block: full ? 'Nest full' : null });
         const tm = (k) => st.tu[t][k] >= C.typeUp[k].max, mem = t === 'squad' ? this.squadMembers() : 1, bm = (k) => this.boostMul(k);
-        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: 'Walk speed. ' + D(Math.round(T.speed * 0.2 * bm('speed')), Math.round(s.speed), tm('speed')), lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed'), pip: (st.tu[t].speed - 1) / (C.typeUp.speed.max - 1) });
-        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: 'Crumbs a trip. ' + D(r1(T.carry * 0.6 * bm('carry') * mem), s.carry, tm('carry')), lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry'), pip: (st.tu[t].carry - 1) / (C.typeUp.carry.max - 1) });
-        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: 'Bite power. ' + D(r1(T.bite * 0.5 * bm('bite') * mem), r1(s.bite), tm('bite')), lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite'), pip: (st.tu[t].bite - 1) / (C.typeUp.bite.max - 1) });
+        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: 'Walk speed. ' + D(Math.round(T.speed * 0.2 * bm('speed')), Math.round(s.speed), tm('speed')), lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed'), pip: null });
+        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: 'Crumbs a trip. ' + D(r1(T.carry * 0.6 * bm('carry') * mem), s.carry, tm('carry')), lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry'), pip: null });
+        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: 'Bite power. ' + D(r1(T.bite * 0.5 * bm('bite') * mem), r1(s.bite), tm('bite')), lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite'), pip: null });
       }
 
       U('colony', 'nest', 'Bigger nest', 'Ant room. ' + D(C.nestPer, cap, false));
@@ -650,13 +706,14 @@
         eaten: cake.left > 0 ? Math.min(99, Math.floor((1 - cake.left / cake.total) * 100)) : 100,
         colony: units ? `Ants ${units}/${this.nestCap()}` : '',
         boosts: bs.join(' · '),
-        time: st.time,
         rows: this.rows(),
       });
 
       let h = '';
       const hard = this.lastKind === 'chocolate' || this.lastKind === 'biscuit';
       if (st.won) h = '';
+      else if (cake.left <= 0 && sc.load > 0) h = 'Carry the last crumbs home to finish the cake!';
+      else if (cake.left <= 0) h = 'The colony is carrying the last crumbs home…';
       else if (st.hint === 0) h = touch ? 'Walk with ◀ ▶ to the Giant Cake, climb it and press BITE' : 'Walk with ← → to the Giant Cake, climb it and bite with Space';
       else if (sc.load >= sc.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
@@ -673,13 +730,17 @@
         v: 3, crumbs: st.crumbs, time: st.time, won: st.won, hint: st.hint,
         up: st.up, tu: st.tu, counts: st.counts, boosts: st.boosts,
         scoutX: Math.round(sc.x * 10) / 10, scoutH: Math.round(sc.h * 10) / 10, scoutLoad: sc.load, scoutVal: sc.loadVal,
+        ngp: st.ngp, best: st.best, rec: st.rec, dS: Math.round(st.dS), dA: Math.round(st.dA),
         cake: this.cake.encode(),
       });
     }
 
-    resetGame() {
+    // a fresh cake; the New Game+ bonus and the best time stay
+    resetGame() { this.restart(this.st.ngp); }
+    newGamePlus() { this.restart((this.st.ngp | 0) + 1); }
+    restart(ngp) {
       this.resetting = true;
-      AF.save.clear();
+      AF.save.write({ v: 3, ngp, best: this.st.best });
       location.reload();
     }
 
@@ -694,6 +755,15 @@
         for (const t of ['strong', 'squad']) st.up['unlock.' + t] = 1;
         st.up.nest = Math.max(st.up.nest, 10);
         this.applyScoutLook();
+      } else if (cmd === 'money') {
+        this.devMoney = !this.devMoney;
+        arg = this.devMoney ? 'on' : 'off';
+      } else if (cmd === 'end') { // skip to the ending: eat the cake, everything is already home
+        if (st.won) { st.won = false; AF.ui.hideWin(); }
+        this.cake.cutTo(0);
+        for (const a of this.ants) { a.w.load = 0; a.w.loadVal = 0; }
+        this.scout.load = 0; this.scout.loadVal = 0;
+        this.finish();
       }
       AF.ui.toast('dev: ' + cmd + (arg !== undefined ? ' ' + arg : ''));
       this.refreshUI();
