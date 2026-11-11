@@ -710,7 +710,6 @@
       });
 
       let h = '';
-      const hard = this.lastKind === 'chocolate' || this.lastKind === 'biscuit';
       if (st.won) h = '';
       else if (cake.left <= 0 && sc.load > 0) h = 'Carry the last crumbs home to finish the cake!';
       else if (cake.left <= 0) h = 'The colony is carrying the last crumbs home…';
@@ -718,7 +717,6 @@
       else if (sc.load >= sc.capacity && st.hint < 2) h = 'Your jaws are full! Carry the crumbs back to the nest hole';
       else if (st.hint === 1) h = 'Keep biting, then carry the crumbs back to the nest hole';
       else if (units === 0) h = st.crumbs >= this.hirePrice('worker') ? 'Hire a worker ant in Upgrades → Ants' : 'Bring crumbs home to hire worker ants';
-      else if ((hard || this.idleWorkers > 0) && !this.unlocked('strong')) h = 'The chocolate shell is hard. Unlock strong ants in Colony';
       AF.ui.hint(h);
     }
 

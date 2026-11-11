@@ -26,13 +26,11 @@
     init(scene) {
       this.scene = scene;
       this.rows = {};
-      $('ver').textContent = (scene.st.ngp > 0 ? `New Game+${scene.st.ngp > 1 ? ' ' + scene.st.ngp : ''} · ` : '') + 'v' + AF.config.version;
       $('bMute').textContent = AF.audio.muted ? 'Sound off' : 'Sound on';
       $('bMute').onclick = () => { $('bMute').textContent = AF.audio.toggle() ? 'Sound off' : 'Sound on'; };
       $('bReset').onclick = () => { if (confirm('Start over? Your progress will be erased.')) scene.resetGame(); };
       $('bNgp').onclick = () => scene.newGamePlus();
-      $('bKeep').onclick = () => { $('win').hidden = true; this.keepGoing = true; };
-      $('eaten').onclick = () => { scene.toggleWhole(); $('eaten').classList.toggle('on', !!scene.showAll); };
+      $('bView').onclick = () => { scene.toggleWhole(); this.viewBtn(); };
       $('bPause').onclick = () => this.pause(true);
       $('bResume').onclick = () => this.pause(false);
       $('pause').onclick = (e) => { if (e.target.id === 'pause') this.pause(false); }; // tap outside the menu resumes
@@ -50,7 +48,8 @@
       if (!ok) return;
       el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
     },
-    wholeOff() { $('eaten').classList.remove('on'); },
+    wholeOff() { this.viewBtn(); },
+    viewBtn() { const on = !!this.scene.showAll; $('bView').classList.toggle('on', on); $('bView').textContent = on ? '↩ Back to scout' : '🔍 Whole cake'; },
     openPanel(on) {
       this.panelOpen = on;
       $('side').hidden = !on;
