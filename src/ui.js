@@ -28,11 +28,27 @@
       $('bZin').onclick = () => scene.zoomBy(1.25);
       $('bZout').onclick = () => scene.zoomBy(0.8);
       $('bPanel').onclick = () => this.openPanel(!this.panelOpen);
+      $('bClose').onclick = () => this.openPanel(false);
       this.openPanel(window.innerWidth >= 900 && !(window.matchMedia && matchMedia('(pointer: coarse)').matches));
       // keep keyboard focus off buttons so Space bites instead of re-clicking
       document.addEventListener('mouseup', (e) => { if (e.target.closest && e.target.closest('button')) setTimeout(() => document.activeElement && document.activeElement.blur && document.activeElement.blur(), 0); });
       this.initPad();
       if (new URLSearchParams(location.search).get('dev') === '1') this.initDev(scene);
+    },
+
+    // the row pops when a purchase goes through
+    bought(el, ok) {
+      if (!ok) return;
+      el.classList.remove('pop'); void el.offsetWidth; el.classList.add('pop');
+    },
+    // the crumb counter gives a little bounce when crumbs come in
+    bump(c) {
+      const now = Date.now();
+      if (this.lastC !== undefined && c > this.lastC + 0.5 && now - (this.bumpT || 0) > 600) {
+        this.bumpT = now;
+        const el = $('crumbs'); el.classList.remove('bump'); void el.offsetWidth; el.classList.add('bump');
+      }
+      this.lastC = c;
     },
 
     openPanel(on) {
@@ -112,7 +128,7 @@
         if (!el) {
           el = document.createElement(r.head ? 'div' : 'button');
           el.className = r.head ? 'hd' : 'up';
-          if (!r.head) el.onclick = () => this.scene.buy(r.id);
+          if (!r.head) el.onclick = () => this.bought(el, this.scene.buy(r.id));
           this.group(r.tab).appendChild(el);
           this.rows[r.id] = el;
         }
@@ -120,9 +136,12 @@
         if (el.hidden) continue;
         if (r.head) { set(el, r.id, r.head); continue; }
         const right = r.block ? `<span class="pr no">${r.block}</span>` : r.price == null ? '<span class="pr no">MAX</span>' : `<span class="pr">${IC}${fmt(r.price)}</span>`;
-        set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em><small>${r.desc}</small></span>${right}`);
+        set(el, r.id, `<span class="nm"><b>${r.title}</b> <em>${r.lv || ''}</em>${r.pip != null ? `<span class="lvb"><i style="width:${Math.round(r.pip * 100)}%"></i></span>` : ''}<small>${r.desc}</small></span>${right}`);
         const off = !!r.block || r.price == null || crumbs < r.price;
         el.disabled = off;
+        // a thin bar along the bottom of a row you can't afford yet shows how close you are
+        const pp = off && !r.block && r.price ? Math.round(Math.min(1, crumbs / r.price) * 100) + '%' : '0%';
+        if (el._p !== pp) { el._p = pp; el.style.setProperty('--p', pp); }
         if (!off) any++;
       }
       set($('bPanel'), 'bp', `Upgrades${any ? ` <i class="n">${any}</i>` : ''}`);
@@ -130,6 +149,7 @@
 
     update(v) {
       set($('crumbs'), 'c', `${IC}${fmt(v.crumbs)}`);
+      this.bump(v.crumbs);
       set($('eaten'), 'e', `<span>Cake eaten</span><span class="track"><span class="fillbar" style="width:${v.eaten}%"></span></span><b>${v.eaten}%</b>`);
       set($('colony'), 'a', v.colony);
       $('colony').hidden = !v.colony;

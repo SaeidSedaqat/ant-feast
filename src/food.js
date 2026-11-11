@@ -229,15 +229,33 @@
         cand = this.full[c] - 1 - r; // 0 tip of the flame, 1 flame, 2 wick, more = striped wax
         if (cand < 3) col = cand === 2 ? [60, 40, 30] : cand === 1 ? [255, 150, 40] : [255, 236, 120];
       }
+      // volume: each tier is a round drum, darker toward its sides (a touch more on the right, away from the
+      // light), with a soft shadow where a tier sits on the one below
+      let sh = 1, ci = 0;
+      if (cand >= 0) { ci = this.candleCols.indexOf(c) % K.candles.w; sh = 1.07 - 0.17 * ci / Math.max(1, K.candles.w - 1); }
+      else {
+        const ti = this.tierOfRow(r), d = Math.min(c, this.cols - 1 - c) - K.tiers[ti][0];
+        sh = 0.8 + 0.2 * Math.sqrt(Math.max(0, Math.min(1, d / 20)));
+        if (c > this.cols / 2) sh *= 0.965;
+        if (ti > 0) { const up = r - K.tiers[ti - 1][1]; if (up < 4) sh *= 0.86 + 0.035 * up; }
+      }
+      const mid = (K.candles.w - 1) >> 1;
       for (let yy = 0; yy < PX; yy++) {
         const gy = r * PX + (PX - 1 - yy); // world pixel row, counted up from the stand
         for (let xx = 0; xx < PX; xx++) {
           const gx = c * PX + xx;
+          // the flame is a sprite of its own (the scene draws it); of the wick, only a thin thread is painted
+          if (cand >= 0 && cand < 3 && (cand < 2 || ci !== mid || xx < 2 || xx > 3)) {
+            const o = ((py + yy) * W + px + xx) * 4;
+            d[o] = d[o + 1] = d[o + 2] = d[o + 3] = 0;
+            continue;
+          }
           let m, rgb = col;
-          if (cand >= 3) { rgb = ((gx + gy) >> 3) & 1 ? col : [250, 250, 255]; m = 1; }
+          if (cand >= 3) { rgb = ((gx + gy) >> 3) & 1 ? col : [250, 250, 255]; m = sh; }
           else if (cand >= 0) m = 1;
           else if (k === KI.sprinkle) m = xx === 0 || yy === PX - 1 ? 0.82 : yy === 0 ? 1.12 : 1;
           else m = pat[(gy & (P - 1)) * P + (gx & (P - 1))];
+          if (cand < 0) m *= sh;
           if (top && cand < 0) m *= yy < 2 ? 1.14 : yy < 3 ? 1.06 : 1; // a lit rim on the exposed top
           const o = ((py + yy) * W + px + xx) * 4;
           d[o] = Math.min(255, rgb[0] * m); d[o + 1] = Math.min(255, rgb[1] * m); d[o + 2] = Math.min(255, rgb[2] * m); d[o + 3] = 255;

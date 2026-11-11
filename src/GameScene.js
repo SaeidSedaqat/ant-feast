@@ -26,6 +26,7 @@
 
       const cake = this.cake = new AF.GiantCake(this, s.cake);
       cake.drawStand(this.add.graphics().setDepth(4));
+      this.buildFlames();
 
       const sx = typeof s.scoutX === 'number' && isFinite(s.scoutX) ? clamp(s.scoutX, C.world.left, C.world.right) : 40;
       const sc = this.scout = new AF.Walker(this, cake, sx, { speed: C.scout.speed, climb: C.scout.climb, texture: 'scout', scale: C.scout.scale, depth: 20, foot: 3.5 });
@@ -82,9 +83,46 @@
       sh.fillStyle(0x000000, 0.16).fillRect(-3000, 0, 15000, 5);
       const nx = C.world.nestX;
       const g = this.add.graphics().setDepth(4);
-      g.fillStyle(0xb48a5c, 1).fillEllipse(nx - 17, -1.5, 9, 4).fillEllipse(nx + 17, -1.5, 9, 4).fillEllipse(nx + 22, -1, 5, 2.5);
-      g.fillStyle(0x1a0c05, 1).fillEllipse(nx, -2.5, 26, 7);
-      g.fillStyle(0x000000, 1).fillEllipse(nx, -2, 18, 4);
+      // the nest: a low mound of dug-up earth around the hole
+      g.fillStyle(0x000000, 0.14).fillEllipse(nx, 0.6, 52, 5);
+      g.fillStyle(0x8a6238, 1).fillEllipse(nx, -1.4, 46, 6.5);
+      g.fillStyle(0xa67a4a, 1).fillEllipse(nx - 1.5, -2.4, 38, 5.2);
+      g.fillStyle(0xc9a06c, 1).fillEllipse(nx - 13, -3.4, 9, 2).fillEllipse(nx + 12, -3.1, 7, 1.7);
+      g.fillStyle(0x6e4c2a, 1);
+      for (const [dx, dy, r] of [[-21, -0.6, 1.3], [-17, -2.2, 0.9], [19, -1, 1.2], [23, -0.2, 0.8], [15, -3, 0.7], [-25, 0, 0.7]]) g.fillCircle(nx + dx, dy, r);
+      g.fillStyle(0x3a2212, 1).fillEllipse(nx, -2.9, 25, 6);
+      g.fillStyle(0x140803, 1).fillEllipse(nx, -2.6, 21, 4.6);
+      g.fillStyle(0x000000, 1).fillEllipse(nx, -2.2, 16, 3);
+    }
+
+    // a flickering flame and a warm glow on each candle, until the ants eat it
+    buildFlames() {
+      const cake = this.cake, w = C.cake.candles.w, cc = cake.candleCols;
+      this.flames = [];
+      for (let i = 0; i + w <= cc.length; i += w) {
+        const cols = cc.slice(i, i + w), mid = cols[w >> 1];
+        const x = cake.colCenter(mid), y = -(cake.base + (cake.full[mid] - 2) * C.cell);
+        this.flames.push({
+          cols, x, y, ph: i * 1.7,
+          glow: this.add.image(x, y - 8, 'glow').setTint(0xffb040).setDepth(5.5),
+          fl: this.add.image(x, y, 'flame').setOrigin(0.5, 1).setDepth(5.6),
+        });
+      }
+    }
+
+    updateFlames() {
+      const cake = this.cake, t = this.time.now / 1000;
+      for (const f of this.flames) {
+        let n = 0;
+        for (const c of f.cols) n += clamp(cake.h[c] - (cake.full[c] - 2), 0, 2);
+        const on = n > 0;
+        f.fl.setVisible(on); f.glow.setVisible(on);
+        if (!on) continue;
+        const k = 0.55 + 0.45 * n / (2 * f.cols.length);
+        const a = Math.sin(t * 11 + f.ph), b = Math.sin(t * 17.3 + f.ph * 2.1), c = Math.sin(t * 5.1 + f.ph);
+        f.fl.setScale(0.44 * k * (1 + 0.05 * b), 0.46 * k * (1 + 0.09 * a)).setRotation(0.07 * c + 0.03 * b);
+        f.glow.setScale(0.62 * k * (1 + 0.07 * a)).setAlpha(0.5 + 0.1 * b);
+      }
     }
 
     // ---------- input ----------
@@ -188,8 +226,12 @@
       apply();
       AF.audio.blip(780);
       this.applyScoutLook(); // legs change the scout's speed right away, not only on load
+      // a ring where the upgrade lands: on the scout for its own upgrades, at the nest for the colony's
+      if (id === 'legs' || id === 'jaws') this.ring(this.scout.x, -this.scout.h - 5);
+      else this.ring(C.world.nestX, -4);
       this.refreshUI();
       this.persist();
+      return true;
     }
 
     applyScoutLook() {
@@ -317,6 +359,7 @@
             if (a.biteT >= s.biteTime) {
               a.biteT = 0;
               const res = cake.eat(a.tc, s.bite, Math.max(0, s.carry - w.load), EFF[a.type]);
+              w.chomp();
               if (res.n) {
                 w.load += res.n; w.loadVal += res.value; w.color = res.color; this.lastKind = res.kind;
                 if (Math.random() < 0.3) this.spray(w.x, -w.h - 2, res.color, 1);
@@ -352,7 +395,7 @@
         const ring = i % 2 ? 1 : -1;
         const x = w.x + dir * (4 + 3 * Math.floor(i / 2)) + ring * 1.5;
         const h = Math.max(this.cake.surfaceAt(x), Math.min(w.h, this.cake.surfaceAt(x) + 3));
-        const fr = w.frame ^ (i & 1);
+        const fr = (w.frame + 2 * (i & 1)) % AF.ANT_FRAMES;
         m.setTexture('squad' + fr).setPosition(x, -h).setFlipX(w.flip).setRotation(w.mode === 'walk' ? 0 : w.rot * 0.5);
       });
       if (this.selSquad === a) this.selRing.setVisible(true).setPosition(w.x, -w.h - 4).setScale(0.35 + 0.04 * Math.sin(this.time.now / 120));
@@ -392,6 +435,7 @@
         sc.load = 0; sc.loadVal = 0;
         st.crumbs += v;
         this.floater(sc.x, -14, '+' + AF.fmt(v), 18);
+        this.spray(sc.x, -4, 0xffe08a, 6);
         AF.audio.blip(660);
         if (st.hint < 2) st.hint = 2;
       }
@@ -430,6 +474,7 @@
         this.spray(cake.colCenter(best), -cake.topH(best) - 2, res.color, 3);
         if (st.hint === 0) st.hint = 1;
       }
+      sc.chomp();
       AF.audio.chomp();
       if (res.item) this.foundItem(res.item);
     }
@@ -441,6 +486,7 @@
       let steps = this.devSpeed > 1 ? Math.min(this.devSpeed, 20) : 1;
       for (let i = 0; i < steps; i++) this.tick(raw);
       this.cake.flush();
+      this.updateFlames();
       this.updateCamera(raw, false);
       this.uiT += raw;
       if (this.uiT > 0.1) { this.uiT = 0; this.refreshUI(); }
@@ -477,12 +523,13 @@
       for (let i = 0; i < n; i++) {
         if (this.parts > 120) return;
         this.parts++;
-        const d = this.add.image(x, y, 'dot').setTint(color).setScale(0.22 + Math.random() * 0.12).setDepth(18);
-        const tx = x + (Math.random() - 0.5) * 12, ty = y - 2 - Math.random() * 6;
+        // a little crumb that hops up, tumbles and drops
+        const d = this.add.image(x, y, 'crumb').setTint(color).setScale(0.05 + Math.random() * 0.04).setDepth(18).setAngle(Math.random() * 360);
+        const tx = x + (Math.random() - 0.5) * 14, ty = y - 3 - Math.random() * 7, spin = (Math.random() - 0.5) * 500;
         this.tweens.add({
-          targets: d, x: tx, y: ty, duration: 180, ease: 'Quad.out',
+          targets: d, x: tx, y: ty, angle: d.angle + spin * 0.4, duration: 190, ease: 'Quad.out',
           onComplete: () => this.tweens.add({
-            targets: d, x: tx + (tx - x) * 0.4, y: ty + 9, alpha: 0, duration: 260, ease: 'Quad.in',
+            targets: d, x: tx + (tx - x) * 0.5, y: ty + 11, angle: d.angle + spin * 0.6, alpha: 0, duration: 300, ease: 'Quad.in',
             onComplete: () => { d.destroy(); this.parts--; },
           }),
         });
@@ -494,7 +541,10 @@
       const t = this.add.text(x, y, text, {
         fontFamily: 'system-ui, -apple-system, Segoe UI, Roboto, sans-serif', fontSize: '32px', fontStyle: 'bold',
         color: '#fff3c4', stroke: '#4a2400', strokeThickness: 7,
-      }).setOrigin(0.5, 1).setDepth(30).setScale((cssPx * AF.DPR) / (32 * z));
+      }).setOrigin(0.5, 1).setDepth(30);
+      const fs = (cssPx * AF.DPR) / (32 * z);
+      t.setScale(fs * 0.5);
+      this.tweens.add({ targets: t, scale: fs, duration: 200, ease: 'Back.out' });
       this.tweens.add({ targets: t, y: y - (36 * AF.DPR) / z, alpha: 0, duration: 1000, ease: 'Cubic.out', onComplete: () => t.destroy() });
     }
 
@@ -566,7 +616,7 @@
     rows() {
       const st = this.st, rows = [], up = st.up;
       const lvTxt = (lv, start) => (lv > start || start > 0 ? 'Lv ' + lv : '');
-      const U = (tab, id, title, desc, show) => rows.push({ tab, id, title, desc, lv: lvTxt(up[id], C.up[id].start), price: this.upPrice(id), show });
+      const U = (tab, id, title, desc, show) => rows.push({ tab, id, title, desc, lv: lvTxt(up[id], C.up[id].start), price: this.upPrice(id), show, pip: isFinite(C.up[id].max) && C.up[id].max > 1 ? (up[id] - 1) / (C.up[id].max - 1) : null });
       // every row reads "+X each, Y now"; a maxed row shows only the "now" part
       const D = (each, now, maxed, w) => maxed ? now + ' now' : `+${each} ${w || 'each'}, ${now} now`;
       const r1 = (v) => String(Math.round(v * 10) / 10);
@@ -584,9 +634,9 @@
         const full = used + (t === 'squad' ? 5 : 1) > cap;
         rows.push({ tab: 'ants', id: 'hire.' + t, title: 'Hire ' + T.name.toLowerCase(), desc: what, lv: '', price: T.max && n >= T.max ? null : this.hirePrice(t), block: full ? 'Nest full' : null });
         const tm = (k) => st.tu[t][k] >= C.typeUp[k].max, mem = t === 'squad' ? this.squadMembers() : 1, bm = (k) => this.boostMul(k);
-        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: 'Walk speed. ' + D(Math.round(T.speed * 0.2 * bm('speed')), Math.round(s.speed), tm('speed')), lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed') });
-        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: 'Crumbs a trip. ' + D(r1(T.carry * 0.6 * bm('carry') * mem), s.carry, tm('carry')), lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry') });
-        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: 'Bite power. ' + D(r1(T.bite * 0.5 * bm('bite') * mem), r1(s.bite), tm('bite')), lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite') });
+        rows.push({ tab: 'ants', id: `type.${t}.speed`, title: 'Speed', desc: 'Walk speed. ' + D(Math.round(T.speed * 0.2 * bm('speed')), Math.round(s.speed), tm('speed')), lv: 'Lv ' + st.tu[t].speed, price: this.typePrice(t, 'speed'), pip: (st.tu[t].speed - 1) / (C.typeUp.speed.max - 1) });
+        rows.push({ tab: 'ants', id: `type.${t}.carry`, title: 'Carry', desc: 'Crumbs a trip. ' + D(r1(T.carry * 0.6 * bm('carry') * mem), s.carry, tm('carry')), lv: 'Lv ' + st.tu[t].carry, price: this.typePrice(t, 'carry'), pip: (st.tu[t].carry - 1) / (C.typeUp.carry.max - 1) });
+        rows.push({ tab: 'ants', id: `type.${t}.bite`, title: 'Bite', desc: 'Bite power. ' + D(r1(T.bite * 0.5 * bm('bite') * mem), r1(s.bite), tm('bite')), lv: 'Lv ' + st.tu[t].bite, price: this.typePrice(t, 'bite'), pip: (st.tu[t].bite - 1) / (C.typeUp.bite.max - 1) });
       }
 
       U('colony', 'nest', 'Bigger nest', 'Ant room. ' + D(C.nestPer, cap, false));

@@ -22,6 +22,9 @@
       this.spr = scene.add.image(x, -this.h, this.key + '0').setOrigin(0.5, 0.96)
         .setScale((C.antLength / AF.ANT_TEX_W) * this.sc).setDepth(o.depth);
       this.crumb = scene.add.image(0, 0, 'crumb').setDepth(o.depth + 0.1).setVisible(false);
+      const len = C.antLength * this.sc;
+      this.shadow = scene.add.image(x, -this.h, 'shadow').setDepth(o.depth - 0.5).setDisplaySize(len * 1.05, len * 0.24);
+      this.biteA = 0;
     }
 
     // ground height under the ant's feet at x
@@ -105,18 +108,25 @@
       return 0;
     }
 
+    chomp() { this.biteA = 1; }
+
     render(dt) {
       let target = 0;
       if (this.mode === 'up') target = this.flip ? Math.PI / 2 : -Math.PI / 2;
       else if (this.mode === 'down') target = this.flip ? -Math.PI / 2 : Math.PI / 2;
       this.rot += (target - this.rot) * Math.min(1, dt * 16);
       this.ox += (this.feetOffset() - this.ox) * Math.min(1, dt * 20);
-      if (this.moving) {
-        this.animT += dt;
-        if (this.animT > 0.09) { this.animT = 0; this.frame ^= 1; this.spr.setTexture(this.key + this.frame); }
+      if (this.moving) { // legs step in time with how fast the ant moves
+        this.animT += dt * Math.max(0.6, Math.min(2.5, this.speed / 85));
+        if (this.animT > 0.055) { this.animT = 0; this.frame = (this.frame + 1) % AF.ANT_FRAMES; this.spr.setTexture(this.key + this.frame); }
       }
-      const px = this.x + this.ox;
-      this.spr.setPosition(px, -this.h).setRotation(this.rot).setFlipX(this.flip);
+      const px = this.x + this.ox, face = this.flip ? -1 : 1;
+      // a bite: the ant lunges forward and dips its head, then springs back
+      let lunge = 0;
+      if (this.biteA > 0) { this.biteA = Math.max(0, this.biteA - dt * 6); lunge = Math.sin(this.biteA * Math.PI); }
+      const r = this.rot + face * lunge * 0.2, fwd = face * lunge * 0.9 * this.sc;
+      this.spr.setPosition(px + Math.cos(this.rot) * fwd, -this.h + Math.sin(this.rot) * fwd).setRotation(r).setFlipX(this.flip);
+      this.shadow.setPosition(px, -this.h + 0.2).setRotation(this.rot).setAlpha(this.mode === 'walk' ? 0.55 : 0.28);
 
       if (this.load > 0) {
         const s = this.sc;
@@ -125,7 +135,7 @@
         const frac = Math.min(1, this.load / Math.max(1, this.capacity || 1));
         this.crumb.setVisible(true).setTint(this.color)
           .setPosition(px + ox * cos - oy * sin, -this.h + ox * sin + oy * cos)
-          .setScale(((2.2 + 2.6 * frac) * s) / 16).setRotation(this.rot);
+          .setScale(((2.4 + 2.8 * frac) * s) / 32).setRotation(this.rot);
       } else this.crumb.setVisible(false);
     }
   }
