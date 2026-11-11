@@ -26,9 +26,12 @@
       $('bAgain').onclick = () => scene.resetGame();
       $('bKeep').onclick = () => { $('win').hidden = true; this.keepGoing = true; };
       $('eaten').onclick = () => { scene.toggleWhole(); $('eaten').classList.toggle('on', !!scene.showAll); };
-      $('bPanel').onclick = () => this.openPanel(!this.panelOpen);
-      $('bClose').onclick = () => this.openPanel(false);
-      this.openPanel(window.innerWidth >= 900 && !(window.matchMedia && matchMedia('(pointer: coarse)').matches));
+      $('bPause').onclick = () => this.pause(true);
+      $('bResume').onclick = () => this.pause(false);
+      $('pause').onclick = (e) => { if (e.target.id === 'pause') this.pause(false); }; // tap outside the menu resumes
+      window.addEventListener('keydown', (e) => { if (e.key === 'Escape' || e.key === 'p' || e.key === 'P') this.pause(!this.paused); });
+      window.addEventListener('blur', () => this.pause(true)); // leaving the tab pauses
+      this.openPanel(true);
       // keep keyboard focus off buttons so Space bites instead of re-clicking
       document.addEventListener('mouseup', (e) => { if (e.target.closest && e.target.closest('button')) setTimeout(() => document.activeElement && document.activeElement.blur && document.activeElement.blur(), 0); });
       this.initPad();
@@ -44,7 +47,14 @@
     openPanel(on) {
       this.panelOpen = on;
       $('side').hidden = !on;
-      $('bPanel').classList.toggle('on', on);
+    },
+    pause(on) {
+      if (on === !!this.paused || !$('win').hidden) return;
+      this.paused = on;
+      $('pause').hidden = !on;
+      const s = this.scene.scene;
+      if (on) s.pause(); else s.resume();
+      for (const k in (AF.pad || {})) AF.pad[k] = false;
     },
     // one section (title + rows) per kind of upgrade, made in a fixed order so late rows land in their own section
     group(t) {
@@ -112,7 +122,6 @@
 
     // rows: {tab, id, head} | {tab, id, title, desc, lv, price (null = max), block (text), show}
     renderRows(rows, crumbs) {
-      let any = 0;
       for (const r of rows) {
         let el = this.rows[r.id];
         if (!el) {
@@ -132,9 +141,7 @@
         // a thin bar along the bottom of a row you can't afford yet shows how close you are
         const pp = off && !r.block && r.price ? Math.round(Math.min(1, crumbs / r.price) * 100) + '%' : '0%';
         if (el._p !== pp) { el._p = pp; el.style.setProperty('--p', pp); }
-        if (!off) any++;
       }
-      set($('bPanel'), 'bp', `Upgrades${any ? ` <i class="n">${any}</i>` : ''}`);
     },
 
     update(v) {
